@@ -16,9 +16,6 @@ run-api:
 run-mcp:
     uv run --package alpha-ai-mcp python -m alpha_ai_mcp
 
-# Run the TUI client
-run-tui:
-    uv run --package alpha-ai-tui python -m alpha_ai_tui
 
 # Build Docker image
 build:

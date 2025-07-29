@@ -14,7 +14,6 @@ dependencies = [
     "httpx>=0.28.0",
     "python-multipart>=0.0.20",
     "fastmcp>=1.0.0",
-    "textual>=1.0.0",
     "click>=8.1.0",
 ]
 
@@ -22,7 +21,6 @@ dependencies = [
 alpha-ai = "alpha_ai.__main__:main"
 alpha-cli = "alpha_ai.cli:cli"
 alpha-mcp = "alpha_ai_mcp.__main__:main"
-alpha-tui = "alpha_ai_tui.__main__:main"
 
 [tool.uv]
 package = true

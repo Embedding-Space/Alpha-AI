@@ -2,8 +2,11 @@
 
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 from alpha_ai.models import (
     ChatRequest, ChatResponse, ModelInfo, 
@@ -54,6 +57,20 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount static files
+static_dir = Path(__file__).parent / "static"
+if static_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+
+@app.get("/")
+async def root():
+    """Serve the web UI."""
+    html_file = Path(__file__).parent / "static" / "index.html"
+    if html_file.exists():
+        return FileResponse(html_file)
+    return {"message": "Alpha AI API"}
 
 
 @app.get("/health")

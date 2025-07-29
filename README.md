@@ -1,6 +1,6 @@
 # Alpha-AI
 
-Provider-agnostic AI agent server with REST API, MCP bridge, and terminal UI.
+Provider-agnostic AI agent server with REST API, MCP bridge, and web UI.
 
 ## Overview
 
@@ -8,9 +8,8 @@ Alpha-AI creates Alpha-architecture AI instances across different models and fro
 
 ## Components
 
-- **alpha-ai**: Core REST API server (runs in Docker)
-- **alpha-ai-mcp**: stdio MCP bridge for Claude Code/Desktop integration  
-- **alpha-ai-tui**: Terminal UI client using Textual
+- **alpha-ai**: Core REST API server with web UI (runs in Docker)
+- **alpha-ai-mcp**: stdio MCP bridge for Claude Code/Desktop integration
 
 ## Quick Start
 
@@ -18,10 +17,9 @@ Alpha-AI creates Alpha-architecture AI instances across different models and fro
 # Start the stack
 docker compose up -d
 
-# Run the terminal UI
-uv run alpha-tui
+# Open web UI at http://localhost:8100
 
-# Use with Claude Code/Desktop via MCP
+# Or use with Claude Code/Desktop via MCP
 uv run alpha-mcp
 ```
 
