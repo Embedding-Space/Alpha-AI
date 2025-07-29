@@ -100,6 +100,80 @@
             padding: 8px 16px;
         }
         
+        /* Tool call styles */
+        .tool-calls {
+            max-width: 70%;
+            align-self: flex-start;
+            margin: 8px 0;
+        }
+        
+        .tool-call {
+            background: #2a2a2a;
+            border: 1px solid #3a3a3a;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            overflow: hidden;
+        }
+        
+        .tool-call-header {
+            padding: 8px 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            user-select: none;
+            font-size: 14px;
+            color: #aaa;
+        }
+        
+        .tool-call-header:hover {
+            background: #333;
+        }
+        
+        .tool-call-arrow {
+            font-size: 12px;
+            transition: transform 0.2s;
+        }
+        
+        .tool-call-arrow.expanded {
+            transform: rotate(90deg);
+        }
+        
+        .tool-call-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+        }
+        
+        .tool-call-content.expanded {
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        
+        .tool-call-section {
+            padding: 12px;
+            border-top: 1px solid #3a3a3a;
+        }
+        
+        .tool-call-section h4 {
+            margin: 0 0 8px 0;
+            font-size: 12px;
+            text-transform: uppercase;
+            color: #888;
+            font-weight: normal;
+        }
+        
+        .tool-call-json {
+            background: #1a1a1a;
+            padding: 8px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            overflow-x: auto;
+            color: #e0e0e0;
+        }
+        
         #input-container {
             padding: 16px;
             background: #2a2a2a;
@@ -266,18 +340,73 @@
         });
         
         // Add message to UI
-        function addMessage(role, content) {
+        function addMessage(role, content, toolCalls = null) {
             // Remove typing indicator if present
             if (typingIndicator) {
                 typingIndicator.remove();
                 typingIndicator = null;
             }
             
+            // Add tool calls BEFORE the assistant message if this is an assistant message with tools
+            if (role === 'assistant' && toolCalls && toolCalls.length > 0) {
+                const toolCallsDiv = document.createElement('div');
+                toolCallsDiv.className = 'tool-calls';
+                
+                toolCalls.forEach((toolCallPair, index) => {
+                    const [call, result] = toolCallPair;
+                    const toolDiv = createToolCallElement(call, result, index);
+                    toolCallsDiv.appendChild(toolDiv);
+                });
+                
+                messagesDiv.appendChild(toolCallsDiv);
+            }
+            
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${role}`;
             messageDiv.textContent = content;
             messagesDiv.appendChild(messageDiv);
+            
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+        
+        // Create collapsible tool call element
+        function createToolCallElement(call, result, index) {
+            const toolDiv = document.createElement('div');
+            toolDiv.className = 'tool-call';
+            
+            // Header
+            const header = document.createElement('div');
+            header.className = 'tool-call-header';
+            header.innerHTML = `
+                <span class="tool-call-arrow">▶</span>
+                <span>${call.tool_name}</span>
+            `;
+            
+            // Content
+            const content = document.createElement('div');
+            content.className = 'tool-call-content';
+            content.innerHTML = `
+                <div class="tool-call-section">
+                    <h4>Request</h4>
+                    <div class="tool-call-json">${JSON.stringify({ tool_name: call.tool_name, args: call.args }, null, 2)}</div>
+                </div>
+                <div class="tool-call-section">
+                    <h4>Response</h4>
+                    <div class="tool-call-json">${JSON.stringify({ content: result.content }, null, 2)}</div>
+                </div>
+            `;
+            
+            // Toggle functionality
+            header.addEventListener('click', () => {
+                const arrow = header.querySelector('.tool-call-arrow');
+                arrow.classList.toggle('expanded');
+                content.classList.toggle('expanded');
+            });
+            
+            toolDiv.appendChild(header);
+            toolDiv.appendChild(content);
+            
+            return toolDiv;
         }
         
         // Show typing indicator
@@ -317,7 +446,7 @@
                 const data = await response.json();
                 
                 if (response.ok) {
-                    addMessage('assistant', data.response);
+                    addMessage('assistant', data.response, data.tool_calls);
                     // Update model if changed
                     if (data.model && data.model !== modelInput.value) {
                         modelInput.value = data.model;

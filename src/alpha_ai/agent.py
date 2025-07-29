@@ -5,6 +5,7 @@ from pathlib import Path
 import httpx
 from pydantic_ai import Agent
 from pydantic_ai.exceptions import UnexpectedModelBehavior
+from pydantic_ai.agent import AgentRunResult
 from pydantic_ai.models.openai import OpenAIModel
 from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.models.groq import GroqModel
@@ -34,10 +35,19 @@ class AlphaAgent:
     def _load_system_prompt(self) -> str:
         """Load the system prompt for Alpha."""
         # For now, a simple prompt. Later we can load from file or Alpha Brain
-        return """You are Alpha AI, a helpful AI assistant.
-        
+        return """You are Alpha AI, a helpful AI assistant with access to various tools.
+
 You have access to conversation history and can maintain context across messages.
-Respond helpfully and concisely to user queries."""
+
+When you need to retrieve information, perform actions, or access external data, use the available tools. 
+Always use tools when explicitly asked to do so, and proactively use them when they would help answer questions more accurately.
+
+Available tool prefixes indicate their source:
+- alpha-brain_: Memory and knowledge tools
+- fetch_: Web fetching tools  
+- context7_: Documentation lookup tools
+
+Respond helpfully and concisely to user queries, using tools as needed."""
     
     def _parse_model_string(self, model: str) -> tuple[str, str]:
         """Parse model string like 'ollama:qwen2.5:14b' into provider and model."""
@@ -153,6 +163,11 @@ Respond helpfully and concisely to user queries."""
     
     async def chat(self, message: str, conversation: list[Dict[str, Any]]) -> str:  # noqa: ARG002
         """Generate a response to a user message."""
+        result = await self.chat_with_result(message, conversation)
+        return str(result.output) if result.output else "I couldn't generate a response."
+    
+    async def chat_with_result(self, message: str, conversation: list[Dict[str, Any]]) -> AgentRunResult:  # noqa: ARG002
+        """Generate a response and return the full result with message history."""
         # Ensure agent is initialized
         await self.initialize()
         
@@ -165,14 +180,13 @@ Respond helpfully and concisely to user queries."""
         
         try:
             result = await self.agent.run(message)
-            # PydanticAI returns the response as output for simple agents
-            return str(result.output) if result.output else "I couldn't generate a response."
+            return result
         except UnexpectedModelBehavior as e:
             # Handle cases where model doesn't respond as expected
-            return f"I encountered an error: {str(e)}. Please try again."
+            raise RuntimeError(f"I encountered an error: {str(e)}. Please try again.")
         except Exception as e:
             # Handle other errors
-            return f"An error occurred: {str(e)}"
+            raise RuntimeError(f"An error occurred: {str(e)}")
     
     async def change_model(self, new_model: str):
         """Change the current model and recreate the agent."""

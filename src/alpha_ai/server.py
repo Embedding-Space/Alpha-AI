@@ -10,7 +10,11 @@ from fastapi.responses import FileResponse
 
 from alpha_ai.models import (
     ChatRequest, ChatResponse, ModelInfo, 
-    ModelChangeRequest, ConversationResponse, ChatMessage
+    ModelChangeRequest, ConversationResponse, ChatMessage,
+    ToolCall, ToolReturn
+)
+from pydantic_ai.messages import (
+    ModelResponse, ModelRequest, ToolCallPart, ToolReturnPart
 )
 from alpha_ai.settings import settings
 from alpha_ai.agent import agent_manager
@@ -94,14 +98,42 @@ async def chat(request: ChatRequest):
         "content": request.message
     })
     
-    # Generate AI response
-    response_text = await agent_manager.chat(request.message, conversation)
+    # Generate AI response and get full result
+    result = await agent_manager.chat_with_result(request.message, conversation)
+    response_text = result.output
     
     # Add assistant response to conversation
     conversation.append({
         "role": "assistant",
         "content": response_text
     })
+    
+    # Extract tool calls from message history
+    tool_calls = []
+    messages = result.new_messages()
+    
+    # Find tool calls and their returns
+    tool_call_map = {}
+    for msg in messages:
+        if isinstance(msg, ModelResponse):
+            for part in msg.parts:
+                if isinstance(part, ToolCallPart):
+                    tool_call = ToolCall(
+                        tool_name=part.tool_name,
+                        args=part.args if isinstance(part.args, dict) else {},
+                        tool_call_id=part.tool_call_id
+                    )
+                    tool_call_map[part.tool_call_id] = tool_call
+        elif isinstance(msg, ModelRequest):
+            for part in msg.parts:
+                if isinstance(part, ToolReturnPart):
+                    if part.tool_call_id in tool_call_map:
+                        tool_return = ToolReturn(
+                            tool_name=part.tool_name,
+                            content=str(part.content),
+                            tool_call_id=part.tool_call_id
+                        )
+                        tool_calls.append((tool_call_map[part.tool_call_id], tool_return))
     
     return ChatResponse(
         response=response_text,
@@ -110,7 +142,8 @@ async def chat(request: ChatRequest):
             "request_tokens": len(request.message.split()),
             "response_tokens": len(response_text.split()),
             "total_tokens": len(request.message.split()) + len(response_text.split())
-        }
+        },
+        tool_calls=tool_calls if tool_calls else None
     )
 
 

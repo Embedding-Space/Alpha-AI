@@ -1,7 +1,7 @@
 """Pydantic models for Alpha AI API."""
 
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
 
 
@@ -17,11 +17,29 @@ class ChatRequest(BaseModel):
     message: str = Field(description="The user's message")
 
 
+class ToolCall(BaseModel):
+    """A tool call made by the model."""
+    tool_name: str = Field(description="Name of the tool called")
+    args: Dict[str, Any] = Field(description="Arguments passed to the tool")
+    tool_call_id: str = Field(description="Unique identifier for the tool call")
+
+
+class ToolReturn(BaseModel):
+    """The return value from a tool call."""
+    tool_name: str = Field(description="Name of the tool that returned")
+    content: str = Field(description="Tool return content")
+    tool_call_id: str = Field(description="Unique identifier matching the tool call")
+
+
 class ChatResponse(BaseModel):
     """Response from the chat endpoint."""
     response: str = Field(description="The assistant's response")
     model: str = Field(description="Model used for generation")
     usage: dict = Field(description="Token usage statistics")
+    tool_calls: Optional[List[tuple[ToolCall, ToolReturn]]] = Field(
+        default=None, 
+        description="Tool calls made during this interaction"
+    )
 
 
 class ModelInfo(BaseModel):
