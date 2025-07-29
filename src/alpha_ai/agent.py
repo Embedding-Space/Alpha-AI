@@ -34,7 +34,16 @@ class AlphaAgent:
     
     def _load_system_prompt(self) -> str:
         """Load the system prompt for Alpha."""
-        # For now, a simple prompt. Later we can load from file or Alpha Brain
+        # Try to load from file first
+        prompt_file = Path("system_prompt.md")
+        if prompt_file.exists():
+            try:
+                return prompt_file.read_text(encoding="utf-8")
+            except Exception as e:
+                print(f"Warning: Failed to read system_prompt.md: {e}")
+                print("Falling back to default prompt")
+        
+        # Default prompt if file doesn't exist
         return """You are Alpha AI, a helpful AI assistant with access to various tools.
 
 You have access to conversation history and can maintain context across messages.

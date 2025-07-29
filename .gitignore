@@ -4,6 +4,9 @@
 # MCP configuration (use mcp_config.example.json as template)
 mcp_config.json
 
+# System prompt (can contain sensitive or experimental content)
+system_prompt.md
+
 # Python-generated files
 __pycache__/
 *.py[oc]
