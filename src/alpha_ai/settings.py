@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     conversation_window_size: int = 10
     
     # Database
-    database_url: str = "sqlite:///./alpha_ai.db"
+    database_url: str
     
     # MCP servers configuration file (Claude Desktop format)
     mcp_config_file: Optional[str] = None

@@ -735,9 +735,9 @@
                 const response = await fetch(`${API_BASE}/conversation`);
                 const data = await response.json();
                 
-                // Add existing messages
+                // Add existing messages with tool calls
                 data.messages.forEach(msg => {
-                    addMessage(msg.role, msg.content);
+                    addMessage(msg.role, msg.content, msg.tool_calls);
                 });
             } catch (error) {
                 console.error('Error loading history:', error);

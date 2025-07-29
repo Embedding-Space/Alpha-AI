@@ -52,8 +52,19 @@ class ModelChangeRequest(BaseModel):
     model: str = Field(description="New model identifier")
 
 
+class MessageWithToolCalls(BaseModel):
+    """A message with optional tool calls."""
+    role: str = Field(description="Role: 'user' or 'assistant'")
+    content: str = Field(description="Message content")
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    tool_calls: Optional[List[tuple[ToolCall, Optional[ToolReturn]]]] = Field(
+        default=None,
+        description="Tool calls made during this message"
+    )
+
+
 class ConversationResponse(BaseModel):
     """Conversation history response."""
-    messages: List[ChatMessage] = Field(description="Recent messages")
+    messages: List[MessageWithToolCalls] = Field(description="Recent messages with tool calls")
     total_messages: int = Field(description="Total messages in conversation")
     model: str = Field(description="Current model")
