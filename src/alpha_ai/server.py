@@ -26,10 +26,15 @@ async def lifespan(_app: FastAPI):
     if settings.alpha_brain_url:
         print(f"Alpha Brain URL: {settings.alpha_brain_url}")
     
+    # Initialize the agent
+    await agent_manager.initialize()
+    print("Agent initialized successfully")
+    
     yield
     
     # Shutdown
     print("Shutting down Alpha AI server...")
+    await agent_manager.cleanup()
 
 
 app = FastAPI(
@@ -99,7 +104,7 @@ async def get_model():
 @app.post(f"{settings.api_v1_prefix}/model", response_model=ModelInfo)
 async def set_model(request: ModelChangeRequest):
     """Change the current model."""
-    agent_manager.change_model(request.model)
+    await agent_manager.change_model(request.model)
     return ModelInfo(model=agent_manager.get_current_model())
 
 
