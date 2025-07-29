@@ -57,7 +57,7 @@ def chat(ctx, message):
     """Send a chat message."""
     base_url = ctx.obj['base_url']
     try:
-        response = httpx.post(f"{base_url}/chat", json={"message": message}, timeout=30.0)
+        response = httpx.post(f"{base_url}/chat", json={"message": message}, timeout=None)
         response.raise_for_status()
         data = response.json()
         click.echo(f"\n{data['response']}\n")

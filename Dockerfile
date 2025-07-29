@@ -2,8 +2,18 @@ FROM python:3.13-slim
 
 WORKDIR /app
 
-# Install uv
+# Install Node.js and npm for npx support
+RUN apt-get update && apt-get install -y \
+    curl \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv and uvx
 RUN pip install uv
+# Ensure uvx is available (it comes with uv)
+RUN uv --version
 
 # Copy project files
 COPY pyproject.toml ./

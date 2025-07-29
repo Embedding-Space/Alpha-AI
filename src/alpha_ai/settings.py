@@ -1,6 +1,6 @@
 """Configuration settings for Alpha AI."""
 
-from typing import Optional
+from typing import Optional, List
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -21,8 +21,19 @@ class Settings(BaseSettings):
     # Database
     database_url: str = "sqlite:///./alpha_ai.db"
     
-    # Alpha Brain connection
-    alpha_brain_url: Optional[str] = None
+    # MCP servers configuration file (Claude Desktop format)
+    mcp_config_file: Optional[str] = None
+    
+    # List of MCP servers to enable (if None, all servers in config are enabled)
+    mcp_servers: Optional[List[str]] = None
+    
+    def model_post_init(self, __context):
+        """Post-initialization to handle comma-separated MCP_SERVERS."""
+        # Handle comma-separated MCP_SERVERS environment variable
+        import os
+        mcp_servers_env = os.environ.get('MCP_SERVERS')
+        if mcp_servers_env and not self.mcp_servers:
+            self.mcp_servers = [s.strip() for s in mcp_servers_env.split(',') if s.strip()]
     
     # API settings
     api_v1_prefix: str = "/api/v1"

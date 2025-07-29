@@ -25,6 +25,22 @@ uv run alpha-tui
 uv run alpha-mcp
 ```
 
+### Using MCP Servers
+
+1. Copy the example MCP config:
+```bash
+cp mcp_config.example.json mcp_config.json
+```
+
+2. Edit `mcp_config.json` to customize servers
+   - The example uses `host.docker.internal` for Docker compatibility
+   - Change to `localhost` if running outside Docker
+
+3. Restart the container:
+```bash
+docker compose restart
+```
+
 ## API Endpoints
 
 - `POST /chat` - Send a message, get a response
@@ -35,5 +51,9 @@ uv run alpha-mcp
 
 ## Configuration
 
-- `ALPHA_BRAIN_URL` - URL to Alpha Brain MCP server (optional)
+Environment variables:
 - `DEFAULT_MODEL` - Default model to use (default: `ollama:qwen2.5:14b`)
+- `MCP_CONFIG_FILE` - Path to MCP servers config file (default: `/app/mcp_config.json` in Docker)
+- `MCP_SERVERS` - Comma-separated list of servers to enable (optional)
+
+See [docs/mcp_configuration.md](docs/mcp_configuration.md) for detailed MCP setup.

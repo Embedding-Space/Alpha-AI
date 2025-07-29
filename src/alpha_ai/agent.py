@@ -1,6 +1,7 @@
 """PydanticAI agent management for Alpha AI."""
 
 from typing import Optional, Dict, Any
+from pathlib import Path
 import httpx
 from pydantic_ai import Agent
 from pydantic_ai.exceptions import UnexpectedModelBehavior
@@ -8,9 +9,9 @@ from pydantic_ai.models.openai import OpenAIModel
 from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.models.groq import GroqModel
 from pydantic_ai.providers.openai import OpenAIProvider
-from pydantic_ai.mcp import MCPServerStreamableHTTP
 
 from .settings import settings
+from .mcp_config import create_mcp_servers_from_file
 
 
 class AlphaAgent:
@@ -20,7 +21,7 @@ class AlphaAgent:
         self.current_model: str = settings.default_model
         self.agent: Optional[Agent] = None
         self.system_prompt = self._load_system_prompt()
-        self.alpha_brain_server: Optional[MCPServerStreamableHTTP] = None
+        self.mcp_servers: Dict[str, Any] = {}
         self._agent_context = None
         self._initialized = False
         
@@ -57,12 +58,24 @@ Respond helpfully and concisely to user queries."""
             
         provider, model_name = self._parse_model_string(self.current_model)
         
-        # Create Alpha Brain MCP client if URL is provided
+        # Create MCP clients
         toolsets = []
-        if settings.alpha_brain_url:
-            self.alpha_brain_server = MCPServerStreamableHTTP(settings.alpha_brain_url)
-            toolsets.append(self.alpha_brain_server)
-            print(f"Alpha Brain MCP client configured for: {settings.alpha_brain_url}")
+        
+        # Load MCP servers from config file
+        if settings.mcp_config_file:
+            config_path = Path(settings.mcp_config_file)
+            if config_path.exists():
+                try:
+                    self.mcp_servers = create_mcp_servers_from_file(
+                        config_path,
+                        filter_servers=settings.mcp_servers
+                    )
+                    for server_name, server in self.mcp_servers.items():
+                        toolsets.append(server)
+                except Exception as e:
+                    print(f"Warning: Failed to load MCP servers from {config_path}: {e}")
+            else:
+                print(f"Warning: MCP config file not found: {config_path}")
         
         # Map provider strings to PydanticAI model configurations
         if provider == "openai":
@@ -104,8 +117,8 @@ Respond helpfully and concisely to user queries."""
         # Enter agent context to connect to MCP servers
         if self.agent and toolsets:
             try:
-                self._agent_context = self.agent.__aenter__()
-                await self._agent_context
+                # Store the agent context for proper cleanup
+                self._agent_context = await self.agent.__aenter__()
             except Exception as e:
                 # Function to check if httpx.ConnectError is in the exception chain
                 def find_connect_error(exc):
@@ -127,13 +140,12 @@ Respond helpfully and concisely to user queries."""
                 
                 # Check if httpx.ConnectError is somewhere in the exception chain
                 if find_connect_error(e):
-                    print(f"\n❌ Unable to connect to MCP server at {settings.alpha_brain_url}")
+                    print(f"\n❌ Unable to connect to MCP servers")
                     print("   Application cannot start.\n")
                     print("   Possible solutions:")
-                    print("   - Ensure Alpha Brain is running and accessible")
+                    print("   - Ensure MCP servers are running and accessible")
                     print("   - If running in Docker, use 'host.docker.internal' instead of 'localhost'")
-                    print(f"     Example: {settings.alpha_brain_url.replace('localhost', 'host.docker.internal')}")
-                    print("   - Clear the ALPHA_BRAIN_URL environment variable to start without Alpha Brain\n")
+                    print("   - Check your mcp_config.json file for correct URLs\n")
                     # Re-raise the original exception to terminate the app
                     raise
                 # If we didn't find httpx.ConnectError, just re-raise
@@ -173,13 +185,13 @@ Respond helpfully and concisely to user queries."""
     
     async def cleanup(self):
         """Clean up resources."""
-        if self._agent_context:
+        if self._agent_context and self.agent:
             try:
                 await self.agent.__aexit__(None, None, None)
             except Exception:
                 pass
             self._agent_context = None
-        self.alpha_brain_server = None
+        self.mcp_servers = {}
         self.agent = None
         self._initialized = False
 

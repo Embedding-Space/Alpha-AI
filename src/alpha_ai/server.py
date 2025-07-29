@@ -23,8 +23,10 @@ async def lifespan(_app: FastAPI):
     # Startup
     print(f"Starting Alpha AI server...")
     print(f"Default model: {settings.default_model}")
-    if settings.alpha_brain_url:
-        print(f"Alpha Brain URL: {settings.alpha_brain_url}")
+    if settings.mcp_config_file:
+        print(f"MCP config file: {settings.mcp_config_file}")
+        if settings.mcp_servers:
+            print(f"Enabled MCP servers: {', '.join(settings.mcp_servers)}")
     
     # Initialize the agent
     await agent_manager.initialize()
@@ -60,7 +62,7 @@ async def health_check():
     return {
         "status": "healthy",
         "model": agent_manager.get_current_model(),
-        "alpha_brain_connected": settings.alpha_brain_url is not None
+        "mcp_servers": list(agent_manager.mcp_servers.keys())
     }
 
 
