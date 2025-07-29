@@ -34,21 +34,6 @@ def model(ctx):
         sys.exit(1)
 
 
-@cli.command()
-@click.argument('model_name')
-@click.pass_context
-def set_model(ctx, model_name):
-    """Set the model."""
-    base_url = ctx.obj['base_url']
-    try:
-        response = httpx.post(f"{base_url}/model", json={"model": model_name})
-        response.raise_for_status()
-        data = response.json()
-        click.echo(f"Model changed to: {data['model']}")
-    except Exception as e:
-        click.echo(f"Error: {e}", err=True)
-        sys.exit(1)
-
 
 @cli.command()
 @click.argument('message')

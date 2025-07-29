@@ -19,7 +19,7 @@ class AlphaAgent:
     """Manages the PydanticAI agent for Alpha AI."""
     
     def __init__(self):
-        self.current_model: str = settings.default_model
+        self.model: str = settings.model
         self.agent: Optional[Agent] = None
         self.system_prompt = self._load_system_prompt()
         self.mcp_servers: Dict[str, Any] = {}
@@ -75,13 +75,13 @@ Respond helpfully and concisely to user queries, using tools as needed."""
                 pass
             self._agent_context = None
             
-        provider, model_name = self._parse_model_string(self.current_model)
+        provider, model_name = self._parse_model_string(self.model)
         
         # Create MCP clients
         toolsets = []
         
-        # Load MCP servers from config file
-        if settings.mcp_config_file:
+        # Load MCP servers from config file (only if not already loaded)
+        if not self.mcp_servers and settings.mcp_config_file:
             config_path = Path(settings.mcp_config_file)
             if config_path.exists():
                 try:
@@ -89,12 +89,14 @@ Respond helpfully and concisely to user queries, using tools as needed."""
                         config_path,
                         filter_servers=settings.mcp_servers
                     )
-                    for server_name, server in self.mcp_servers.items():
-                        toolsets.append(server)
                 except Exception as e:
                     print(f"Warning: Failed to load MCP servers from {config_path}: {e}")
             else:
                 print(f"Warning: MCP config file not found: {config_path}")
+        
+        # Add existing MCP servers to toolsets
+        for server_name, server in self.mcp_servers.items():
+            toolsets.append(server)
         
         # Map provider strings to PydanticAI model configurations
         if provider == "openai":
@@ -197,14 +199,10 @@ Respond helpfully and concisely to user queries, using tools as needed."""
             # Handle other errors
             raise RuntimeError(f"An error occurred: {str(e)}")
     
-    async def change_model(self, new_model: str):
-        """Change the current model and recreate the agent."""
-        self.current_model = new_model
-        await self._create_agent()
     
-    def get_current_model(self) -> str:
-        """Get the current model string."""
-        return self.current_model
+    def get_model(self) -> str:
+        """Get the model string."""
+        return self.model
     
     async def cleanup(self):
         """Clean up resources."""

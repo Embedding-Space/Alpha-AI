@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Alpha AI</title>
+    <!-- Markdown and syntax highlighting -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github-dark.min.css">
     <style>
         * {
             margin: 0;
@@ -91,6 +95,90 @@
             border-bottom-left-radius: 4px;
         }
         
+        /* Markdown content styling */
+        .message h1, .message h2, .message h3, .message h4, .message h5, .message h6 {
+            margin: 0.5em 0;
+        }
+        
+        .message h1 { font-size: 1.5em; }
+        .message h2 { font-size: 1.3em; }
+        .message h3 { font-size: 1.1em; }
+        
+        .message p {
+            margin: 0.5em 0;
+        }
+        
+        /* Remove top margin from first element */
+        .message > *:first-child {
+            margin-top: 0;
+        }
+        
+        /* Remove bottom margin from last element */
+        .message > *:last-child {
+            margin-bottom: 0;
+        }
+        
+        .message code {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 0.2em 0.4em;
+            border-radius: 3px;
+            font-size: 0.9em;
+            font-family: 'Consolas', 'Monaco', monospace;
+        }
+        
+        .message pre {
+            background: #1a1a1a;
+            padding: 1em;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 0.5em 0;
+        }
+        
+        .message pre code {
+            background: none;
+            padding: 0;
+            font-size: 0.9em;
+        }
+        
+        .message ul, .message ol {
+            margin: 0.5em 0;
+            padding-left: 1.5em;
+        }
+        
+        .message li {
+            margin: 0.25em 0;
+        }
+        
+        .message blockquote {
+            border-left: 3px solid #4a4a4a;
+            padding-left: 1em;
+            margin: 0.5em 0;
+            color: #aaa;
+        }
+        
+        .message a {
+            color: #58a6ff;
+            text-decoration: none;
+        }
+        
+        .message a:hover {
+            text-decoration: underline;
+        }
+        
+        .message table {
+            border-collapse: collapse;
+            margin: 0.5em 0;
+        }
+        
+        .message th, .message td {
+            border: 1px solid #4a4a4a;
+            padding: 0.5em;
+        }
+        
+        .message th {
+            background: rgba(255, 255, 255, 0.05);
+        }
+        
         .message.system {
             align-self: center;
             background: transparent;
@@ -172,6 +260,27 @@
             white-space: pre-wrap;
             overflow-x: auto;
             color: #e0e0e0;
+        }
+        
+        /* JSON syntax highlighting */
+        .tool-call-json .json-key {
+            color: #7ec699;
+        }
+        
+        .tool-call-json .json-string {
+            color: #e6c07b;
+        }
+        
+        .tool-call-json .json-number {
+            color: #d19a66;
+        }
+        
+        .tool-call-json .json-boolean {
+            color: #56b6c2;
+        }
+        
+        .tool-call-json .json-null {
+            color: #abb2bf;
         }
         
         #input-container {
@@ -264,8 +373,11 @@
 </head>
 <body>
     <div id="header">
-        <input id="model-input" type="text" placeholder="ollama:qwen2.5:14b" value="ollama:qwen2.5:14b">
-        <button id="model-button">Set Model</button>
+        <span id="model-display" style="color: #888; font-size: 14px;">Loading model...</span>
+        <label style="margin-left: auto; display: flex; align-items: center; gap: 8px; color: #e0e0e0; font-size: 14px;">
+            <input type="checkbox" id="streaming-toggle" checked>
+            Streaming
+        </label>
     </div>
     
     <div id="messages"></div>
@@ -278,9 +390,55 @@
         const API_BASE = '/api/v1';
         const messagesDiv = document.getElementById('messages');
         const input = document.getElementById('input');
-        const modelInput = document.getElementById('model-input');
-        const modelButton = document.getElementById('model-button');
+        const modelDisplay = document.getElementById('model-display');
+        const streamingToggle = document.getElementById('streaming-toggle');
         let typingIndicator = null;
+        let useStreaming = true; // Default to streaming mode
+        
+        // Configure marked for GitHub-flavored Markdown
+        marked.setOptions({
+            gfm: true,
+            breaks: true,
+            highlight: function(code, lang) {
+                if (lang && hljs.getLanguage(lang)) {
+                    try {
+                        return hljs.highlight(code, { language: lang }).value;
+                    } catch (err) {
+                        console.error('Highlight error:', err);
+                    }
+                }
+                return hljs.highlightAuto(code).value;
+            }
+        });
+        
+        // Render markdown to HTML
+        function renderMarkdown(text) {
+            // Parse markdown and trim any trailing whitespace/newlines
+            const html = marked.parse(text);
+            // Remove trailing <p> tags with only whitespace
+            return html.replace(/<p>\s*<\/p>\s*$/g, '').trim();
+        }
+        
+        // Syntax highlight JSON
+        function highlightJSON(json) {
+            // Format JSON with proper indentation
+            const formatted = JSON.stringify(json, null, 2);
+            
+            // Apply syntax highlighting
+            return formatted
+                .replace(/("(\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?)/g, function (match, p1, p2, p3) {
+                    const cls = p3 ? 'json-key' : 'json-string';
+                    return '<span class="' + cls + '">' + match + '</span>';
+                })
+                .replace(/\b(true|false)\b/g, '<span class="json-boolean">$1</span>')
+                .replace(/\bnull\b/g, '<span class="json-null">null</span>')
+                .replace(/\b(-?\d+(\.\d+)?([eE][+-]?\d+)?)\b/g, '<span class="json-number">$1</span>');
+        }
+        
+        // Handle streaming toggle
+        streamingToggle.addEventListener('change', (e) => {
+            useStreaming = e.target.checked;
+        });
         
         // Auto-resize textarea
         input.addEventListener('input', () => {
@@ -301,43 +459,13 @@
             try {
                 const response = await fetch(`${API_BASE}/model`);
                 const data = await response.json();
-                modelInput.value = data.model;
+                modelDisplay.textContent = data.model;
             } catch (error) {
                 console.error('Error loading model:', error);
+                modelDisplay.textContent = 'Error loading model';
             }
         }
         
-        // Change model
-        async function changeModel() {
-            const newModel = modelInput.value.trim();
-            if (!newModel) return;
-            
-            try {
-                const response = await fetch(`${API_BASE}/model`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ model: newModel })
-                });
-                
-                if (response.ok) {
-                    addMessage('system', `Model changed to ${newModel}`);
-                } else {
-                    const error = await response.json();
-                    addMessage('system', `Error changing model: ${error.detail || 'Unknown error'}`);
-                }
-            } catch (error) {
-                console.error('Error changing model:', error);
-                addMessage('system', `Error changing model: ${error.message}`);
-            }
-        }
-        
-        modelButton.addEventListener('click', changeModel);
-        modelInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                changeModel();
-            }
-        });
         
         // Add message to UI
         function addMessage(role, content, toolCalls = null) {
@@ -363,7 +491,14 @@
             
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${role}`;
-            messageDiv.textContent = content;
+            
+            // Render markdown for assistant messages, plain text for others
+            if (role === 'assistant') {
+                messageDiv.innerHTML = renderMarkdown(content);
+            } else {
+                messageDiv.textContent = content;
+            }
+            
             messagesDiv.appendChild(messageDiv);
             
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
@@ -385,14 +520,15 @@
             // Content
             const content = document.createElement('div');
             content.className = 'tool-call-content';
+            const responseContent = result ? highlightJSON({ content: result.content }) : 'Waiting for response...';
             content.innerHTML = `
                 <div class="tool-call-section">
                     <h4>Request</h4>
-                    <div class="tool-call-json">${JSON.stringify({ tool_name: call.tool_name, args: call.args }, null, 2)}</div>
+                    <div class="tool-call-json">${highlightJSON({ tool_name: call.tool_name, args: call.args })}</div>
                 </div>
                 <div class="tool-call-section">
                     <h4>Response</h4>
-                    <div class="tool-call-json">${JSON.stringify({ content: result.content }, null, 2)}</div>
+                    <div class="tool-call-json">${responseContent}</div>
                 </div>
             `;
             
@@ -420,7 +556,7 @@
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
         
-        // Send message
+        // Send message with streaming support
         async function sendMessage() {
             const message = input.value.trim();
             if (!message) return;
@@ -435,7 +571,15 @@
             // Show typing indicator
             showTypingIndicator();
             
-            // Send to server
+            if (useStreaming) {
+                await sendMessageStreaming(message);
+            } else {
+                await sendMessageNonStreaming(message);
+            }
+        }
+        
+        // Non-streaming message send (original method)
+        async function sendMessageNonStreaming(message) {
             try {
                 const response = await fetch(`${API_BASE}/chat`, {
                     method: 'POST',
@@ -448,11 +592,137 @@
                 if (response.ok) {
                     addMessage('assistant', data.response, data.tool_calls);
                     // Update model if changed
-                    if (data.model && data.model !== modelInput.value) {
-                        modelInput.value = data.model;
-                    }
+                    // Model is fixed at startup, no need to update
                 } else {
                     addMessage('system', `Error: ${data.detail || 'Unknown error'}`);
+                }
+            } catch (error) {
+                addMessage('system', `Error: ${error.message}`);
+            }
+        }
+        
+        // Streaming message send using SSE
+        async function sendMessageStreaming(message) {
+            try {
+                const response = await fetch(`${API_BASE}/chat/stream`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message })
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    addMessage('system', `Error: ${error.detail || 'Unknown error'}`);
+                    return;
+                }
+                
+                // Remove typing indicator
+                if (typingIndicator) {
+                    typingIndicator.remove();
+                    typingIndicator = null;
+                }
+                
+                // Create initial message div for streaming content
+                let currentMessageDiv = document.createElement('div');
+                currentMessageDiv.className = 'message assistant';
+                currentMessageDiv.textContent = '';
+                messagesDiv.appendChild(currentMessageDiv);
+                
+                // Track the raw text for markdown rendering
+                let currentMessageText = '';
+                
+                // Track tool calls and their container
+                let pendingToolCalls = new Map();
+                let currentToolCallsContainer = null;
+                
+                // Read the stream
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || '';
+                    
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(line.slice(6));
+                                
+                                if (data.type === 'start') {
+                                    // Update model if changed
+                                    // Model is fixed at startup, no need to update
+                                } else if (data.type === 'text_delta') {
+                                    // If we need a new message div (e.g., after tool calls), create one
+                                    if (!currentMessageDiv || !currentMessageDiv.parentNode) {
+                                        currentMessageDiv = document.createElement('div');
+                                        currentMessageDiv.className = 'message assistant';
+                                        currentMessageDiv.innerHTML = '';
+                                        messagesDiv.appendChild(currentMessageDiv);
+                                        currentMessageText = ''; // Reset text accumulator
+                                    }
+                                    // Accumulate text and re-render markdown
+                                    currentMessageText += data.content;
+                                    currentMessageDiv.innerHTML = renderMarkdown(currentMessageText);
+                                    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                                } else if (data.type === 'tool_call') {
+                                    // Create tool calls container if it doesn't exist
+                                    if (!currentToolCallsContainer) {
+                                        currentToolCallsContainer = document.createElement('div');
+                                        currentToolCallsContainer.className = 'tool-calls';
+                                        // Don't append yet - we'll do it after the current message
+                                    }
+                                    
+                                    const toolCallDiv = createToolCallElement(
+                                        { tool_name: data.tool_name, args: data.args, tool_call_id: data.tool_call_id },
+                                        null,  // No result yet
+                                        pendingToolCalls.size
+                                    );
+                                    currentToolCallsContainer.appendChild(toolCallDiv);
+                                    pendingToolCalls.set(data.tool_call_id, toolCallDiv);
+                                } else if (data.type === 'tool_return') {
+                                    // Update tool call with result
+                                    const toolCallDiv = pendingToolCalls.get(data.tool_call_id);
+                                    if (toolCallDiv) {
+                                        // Update the existing tool call div with the result
+                                        const contentDiv = toolCallDiv.querySelector('.tool-call-content');
+                                        const responseSection = contentDiv.querySelector('.tool-call-section:last-child .tool-call-json');
+                                        responseSection.innerHTML = highlightJSON({ content: data.content });
+                                    }
+                                    
+                                    // Now append the tool calls container after the message (if we haven't already)
+                                    if (currentToolCallsContainer && !currentToolCallsContainer.parentNode) {
+                                        messagesDiv.appendChild(currentToolCallsContainer);
+                                    }
+                                    
+                                    // Reset tool calls container for next batch
+                                    currentToolCallsContainer = null;
+                                    
+                                    // Reset current message div so next text creates a new bubble
+                                    currentMessageDiv = null;
+                                    currentMessageText = ''; // Reset text accumulator for new message
+                                } else if (data.type === 'done') {
+                                    // Ensure tool calls are appended if we have any
+                                    if (currentToolCallsContainer && !currentToolCallsContainer.parentNode) {
+                                        messagesDiv.appendChild(currentToolCallsContainer);
+                                    }
+                                    
+                                    // Clean up empty message divs
+                                    if (!currentMessageDiv.textContent.trim()) {
+                                        currentMessageDiv.remove();
+                                    }
+                                } else if (data.type === 'error') {
+                                    addMessage('system', `Error: ${data.error}`);
+                                }
+                            } catch (e) {
+                                console.error('Failed to parse SSE data:', e);
+                            }
+                        }
+                    }
                 }
             } catch (error) {
                 addMessage('system', `Error: ${error.message}`);

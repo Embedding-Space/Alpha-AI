@@ -12,8 +12,8 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
     
-    # Model configuration
-    default_model: str = "ollama:qwen2.5:14b"
+    # Model configuration (required)
+    model: str  # No default - must be set via MODEL env var
     
     # Context window settings
     conversation_window_size: int = 10
