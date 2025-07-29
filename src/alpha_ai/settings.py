@@ -1,12 +1,12 @@
 """Configuration settings for Alpha AI."""
 
-import os
 from typing import Optional
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     """Application settings."""
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
     
     # Server configuration
     host: str = "0.0.0.0"
@@ -27,8 +27,11 @@ class Settings(BaseSettings):
     # API settings
     api_v1_prefix: str = "/api/v1"
     
-    class Config:
-        env_prefix = "ALPHA_AI_"
+    # Provider configurations
+    openai_api_key: Optional[str] = None
+    anthropic_api_key: Optional[str] = None
+    groq_api_key: Optional[str] = None
+    ollama_base_url: str = "http://localhost:11434/v1"
         
 
 settings = Settings()

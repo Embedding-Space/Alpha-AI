@@ -5,8 +5,12 @@ services:
     ports:
       - "8100:8000"  # Using 8100 externally, 48765 internally
     environment:
-      - ALPHA_AI_DEFAULT_MODEL=ollama:qwen2.5:14b
-      - ALPHA_AI_ALPHA_BRAIN_URL=${ALPHA_BRAIN_URL:-http://localhost:9100/mcp/}
+      - DEFAULT_MODEL=${DEFAULT_MODEL:-ollama:qwen2.5:14b}
+      - ALPHA_BRAIN_URL=${ALPHA_BRAIN_URL:-http://localhost:9100/mcp/}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434/v1}
     volumes:
       - alpha-ai-data:/data
     networks:

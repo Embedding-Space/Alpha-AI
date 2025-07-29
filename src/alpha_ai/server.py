@@ -10,10 +10,10 @@ from alpha_ai.models import (
     ModelChangeRequest, ConversationResponse, ChatMessage
 )
 from alpha_ai.settings import settings
+from alpha_ai.agent import agent_manager
 
 
 # Global state (will be replaced with proper persistence)
-current_model = settings.default_model
 conversation = []
 
 
@@ -54,7 +54,7 @@ async def health_check():
     """Health check endpoint."""
     return {
         "status": "healthy",
-        "model": current_model,
+        "model": agent_manager.get_current_model(),
         "alpha_brain_connected": settings.alpha_brain_url is not None
     }
 
@@ -70,9 +70,8 @@ async def chat(request: ChatRequest):
         "content": request.message
     })
     
-    # TODO: Implement actual AI response generation
-    # For now, return a mock response
-    response_text = f"I received your message: '{request.message}'. (Using model: {current_model})"
+    # Generate AI response
+    response_text = await agent_manager.chat(request.message, conversation)
     
     # Add assistant response to conversation
     conversation.append({
@@ -82,7 +81,7 @@ async def chat(request: ChatRequest):
     
     return ChatResponse(
         response=response_text,
-        model=current_model,
+        model=agent_manager.get_current_model(),
         usage={
             "request_tokens": len(request.message.split()),
             "response_tokens": len(response_text.split()),
@@ -94,18 +93,14 @@ async def chat(request: ChatRequest):
 @app.get(f"{settings.api_v1_prefix}/model", response_model=ModelInfo)
 async def get_model():
     """Get the current model."""
-    return ModelInfo(model=current_model)
+    return ModelInfo(model=agent_manager.get_current_model())
 
 
 @app.post(f"{settings.api_v1_prefix}/model", response_model=ModelInfo)
 async def set_model(request: ModelChangeRequest):
     """Change the current model."""
-    global current_model
-    
-    # TODO: Validate model is available
-    current_model = request.model
-    
-    return ModelInfo(model=current_model)
+    agent_manager.change_model(request.model)
+    return ModelInfo(model=agent_manager.get_current_model())
 
 
 @app.get(f"{settings.api_v1_prefix}/conversation", response_model=ConversationResponse)
@@ -122,7 +117,7 @@ async def get_conversation(limit: int = 10):
             ) for msg in messages
         ],
         total_messages=len(conversation),
-        model=current_model
+        model=agent_manager.get_current_model()
     )
 
 
@@ -132,7 +127,7 @@ async def clear_conversation():
     global conversation
     conversation = []
     
-    return {"status": "conversation cleared", "model": current_model}
+    return {"status": "conversation cleared", "model": agent_manager.get_current_model()}
 
 
 if __name__ == "__main__":

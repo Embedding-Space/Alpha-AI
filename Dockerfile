@@ -19,7 +19,7 @@ RUN mkdir -p /data
 EXPOSE 8000
 
 # Set environment variables
-ENV ALPHA_AI_DATABASE_URL="sqlite:////data/alpha_ai.db"
+ENV DATABASE_URL="sqlite:////data/alpha_ai.db"
 
 # Run the server
 CMD ["python", "-m", "alpha_ai"]
