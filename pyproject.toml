@@ -20,6 +20,7 @@ dependencies = [
 
 [project.scripts]
 alpha-ai = "alpha_ai.__main__:main"
+alpha-cli = "alpha_ai.cli:cli"
 alpha-mcp = "alpha_ai_mcp.__main__:main"
 alpha-tui = "alpha_ai_tui.__main__:main"
 
