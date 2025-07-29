@@ -1,0 +1,21 @@
+services:
+  alpha-ai:
+    build: .
+    container_name: alpha-ai
+    ports:
+      - "8100:8000"  # Using 8100 externally, 48765 internally
+    environment:
+      - ALPHA_AI_DEFAULT_MODEL=ollama:qwen2.5:14b
+      - ALPHA_AI_ALPHA_BRAIN_URL=${ALPHA_BRAIN_URL:-http://localhost:9100/mcp/}
+    volumes:
+      - alpha-ai-data:/data
+    networks:
+      - alpha-network
+    restart: unless-stopped
+
+volumes:
+  alpha-ai-data:
+
+networks:
+  alpha-network:
+    driver: bridge
