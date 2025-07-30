@@ -33,35 +33,46 @@
             gap: 12px;
         }
         
-        #model-input {
+        #model-select {
             background: #1a1a1a;
             color: #e0e0e0;
             border: 1px solid #3a3a3a;
             padding: 6px 12px;
             border-radius: 6px;
             font-size: 14px;
-            font-family: monospace;
-            width: 300px;
             outline: none;
+            cursor: pointer;
+            min-width: 200px;
         }
         
-        #model-input:focus {
+        #model-select:focus {
             border-color: #4a4a4a;
         }
         
-        #model-button {
-            background: #2a2a2a;
+        #model-select option {
+            background: #1a1a1a;
             color: #e0e0e0;
-            border: 1px solid #3a3a3a;
-            padding: 6px 12px;
+        }
+        
+        #new-chat-button {
+            background: #0084ff;
+            color: white;
+            border: none;
+            padding: 6px 16px;
             border-radius: 6px;
             font-size: 14px;
             cursor: pointer;
             transition: all 0.2s;
+            font-weight: 500;
         }
         
-        #model-button:hover {
-            background: #3a3a3a;
+        #new-chat-button:hover {
+            background: #0073e6;
+        }
+        
+        #new-chat-button:disabled {
+            background: #4a4a4a;
+            cursor: not-allowed;
         }
         
         #messages {
@@ -373,7 +384,12 @@
 </head>
 <body>
     <div id="header">
-        <span id="model-display" style="color: #888; font-size: 14px;">Loading model...</span>
+        <span style="font-weight: 600; font-size: 16px;">Alpha AI</span>
+        <span style="color: #888; font-size: 14px;">Model:</span>
+        <select id="model-select">
+            <option value="">Loading models...</option>
+        </select>
+        <button id="new-chat-button">New Chat</button>
         <label style="margin-left: auto; display: flex; align-items: center; gap: 8px; color: #e0e0e0; font-size: 14px;">
             <input type="checkbox" id="streaming-toggle" checked>
             Streaming
@@ -390,7 +406,8 @@
         const API_BASE = '/api/v1';
         const messagesDiv = document.getElementById('messages');
         const input = document.getElementById('input');
-        const modelDisplay = document.getElementById('model-display');
+        const modelSelect = document.getElementById('model-select');
+        const newChatButton = document.getElementById('new-chat-button');
         const streamingToggle = document.getElementById('streaming-toggle');
         let typingIndicator = null;
         let useStreaming = true; // Default to streaming mode
@@ -454,17 +471,81 @@
             }
         });
         
-        // Get current model on load
-        async function loadCurrentModel() {
+        // Load available models
+        async function loadModels() {
             try {
-                const response = await fetch(`${API_BASE}/model`);
+                const response = await fetch(`${API_BASE}/models`);
                 const data = await response.json();
-                modelDisplay.textContent = data.model;
+                
+                // Clear existing options
+                modelSelect.innerHTML = '';
+                
+                // Group models by provider
+                const modelsByProvider = {};
+                data.models.forEach(model => {
+                    if (!modelsByProvider[model.provider]) {
+                        modelsByProvider[model.provider] = [];
+                    }
+                    modelsByProvider[model.provider].push(model);
+                });
+                
+                // Add options grouped by provider
+                Object.keys(modelsByProvider).sort().forEach(provider => {
+                    const optgroup = document.createElement('optgroup');
+                    optgroup.label = provider;
+                    
+                    modelsByProvider[provider].forEach(model => {
+                        const option = document.createElement('option');
+                        option.value = model.id;
+                        option.textContent = model.name;
+                        if (model.id === data.current) {
+                            option.selected = true;
+                        }
+                        optgroup.appendChild(option);
+                    });
+                    
+                    modelSelect.appendChild(optgroup);
+                });
             } catch (error) {
-                console.error('Error loading model:', error);
-                modelDisplay.textContent = 'Error loading model';
+                console.error('Error loading models:', error);
+                modelSelect.innerHTML = '<option value="">Error loading models</option>';
             }
         }
+        
+        // Handle new chat button
+        newChatButton.addEventListener('click', async () => {
+            const selectedModel = modelSelect.value;
+            if (!selectedModel) {
+                alert('Please select a model first');
+                return;
+            }
+            
+            if (!confirm(`Start a new chat with ${modelSelect.options[modelSelect.selectedIndex].text}? This will clear the current conversation.`)) {
+                return;
+            }
+            
+            try {
+                newChatButton.disabled = true;
+                const response = await fetch(`${API_BASE}/conversation/new`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model: selectedModel })
+                });
+                
+                if (response.ok) {
+                    // Clear the messages
+                    messagesDiv.innerHTML = '';
+                    input.focus();
+                } else {
+                    const error = await response.json();
+                    alert(`Error: ${error.detail || 'Failed to start new conversation'}`);
+                }
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+            } finally {
+                newChatButton.disabled = false;
+            }
+        });
         
         
         // Add message to UI
@@ -745,7 +826,7 @@
         }
         
         // Initialize
-        loadCurrentModel();
+        loadModels();
         loadHistory();
         input.focus();
     </script>

@@ -2,6 +2,7 @@
 
 from typing import Optional, Dict, Any
 from pathlib import Path
+import json
 import httpx
 from pydantic_ai import Agent
 from pydantic_ai.exceptions import UnexpectedModelBehavior
@@ -9,28 +10,73 @@ from pydantic_ai.agent import AgentRunResult
 from pydantic_ai.models.openai import OpenAIModel
 from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.models.groq import GroqModel
+from pydantic_ai.models.gemini import GeminiModel
 from pydantic_ai.providers.openai import OpenAIProvider
 
 from .settings import settings
 from .mcp_config import create_mcp_servers_from_file
 
 
-class AlphaAgent:
-    """Manages the PydanticAI agent for Alpha AI."""
+class AlphaAgentManager:
+    """Manages multiple PydanticAI agents for different models."""
     
     def __init__(self):
-        self.model: str = settings.model
-        self.agent: Optional[Agent] = None
+        self.agents: Dict[str, Agent] = {}
+        self.agent_contexts: Dict[str, Any] = {}
+        self.current_model: str = settings.model
         self.system_prompt = self._load_system_prompt()
         self.mcp_servers: Dict[str, Any] = {}
-        self._agent_context = None
-        self._initialized = False
+        self.available_models: Dict[str, Dict[str, str]] = {}
+        self._load_available_models()
         
+    def _load_available_models(self):
+        """Load available models from models.json."""
+        models_file = Path("models.json")
+        if models_file.exists():
+            try:
+                data = json.loads(models_file.read_text())
+                self.available_models = {
+                    model["id"]: model 
+                    for model in data["models"]
+                }
+            except Exception as e:
+                print(f"Warning: Failed to load models.json: {e}")
+                # Fallback to just the configured model
+                self.available_models = {
+                    settings.model: {
+                        "id": settings.model,
+                        "name": settings.model,
+                        "provider": "Unknown"
+                    }
+                }
+        else:
+            # If no models.json, just use the configured model
+            self.available_models = {
+                settings.model: {
+                    "id": settings.model,
+                    "name": settings.model,
+                    "provider": "Unknown"
+                }
+            }
+    
     async def initialize(self):
-        """Initialize the agent asynchronously."""
-        if not self._initialized:
-            await self._create_agent()
-            self._initialized = True
+        """Initialize the default agent."""
+        # Load MCP servers once
+        if not self.mcp_servers and settings.mcp_config_file:
+            config_path = Path(settings.mcp_config_file)
+            if config_path.exists():
+                try:
+                    self.mcp_servers = create_mcp_servers_from_file(
+                        config_path,
+                        filter_servers=settings.mcp_servers
+                    )
+                except Exception as e:
+                    print(f"Warning: Failed to load MCP servers from {config_path}: {e}")
+            else:
+                print(f"Warning: MCP config file not found: {config_path}")
+        
+        # Initialize the default agent
+        await self.get_or_create_agent(self.current_model)
     
     def _load_system_prompt(self) -> str:
         """Load the system prompt for Alpha."""
@@ -65,54 +111,27 @@ Respond helpfully and concisely to user queries, using tools as needed."""
             raise ValueError(f"Invalid model format: {model}. Expected 'provider:model'")
         return parts[0], parts[1]
     
-    async def _create_agent(self):
-        """Create a new PydanticAI agent with the current model."""
-        # Clean up existing agent context if any
-        if self._agent_context:
-            try:
-                await self.agent.__aexit__(None, None, None)
-            except Exception:
-                pass
-            self._agent_context = None
-            
-        provider, model_name = self._parse_model_string(self.model)
+    async def get_or_create_agent(self, model: str) -> Agent:
+        """Get an existing agent or create a new one for the specified model."""
+        if model in self.agents:
+            return self.agents[model]
         
-        # Create MCP clients
-        toolsets = []
+        # Create new agent
+        await self._create_agent(model)
+        return self.agents[model]
+    
+    async def _create_agent(self, model_string: str):
+        """Create a new PydanticAI agent for the specified model."""
+        provider, model_name = self._parse_model_string(model_string)
         
-        # Load MCP servers from config file (only if not already loaded)
-        if not self.mcp_servers and settings.mcp_config_file:
-            config_path = Path(settings.mcp_config_file)
-            if config_path.exists():
-                try:
-                    self.mcp_servers = create_mcp_servers_from_file(
-                        config_path,
-                        filter_servers=settings.mcp_servers
-                    )
-                except Exception as e:
-                    print(f"Warning: Failed to load MCP servers from {config_path}: {e}")
-            else:
-                print(f"Warning: MCP config file not found: {config_path}")
-        
-        # Add existing MCP servers to toolsets
-        for server_name, server in self.mcp_servers.items():
-            toolsets.append(server)
+        # Get toolsets from MCP servers
+        toolsets = list(self.mcp_servers.values())
         
         # Map provider strings to PydanticAI model configurations
         if provider == "openai":
             model = OpenAIModel(model_name)
-            self.agent = Agent(
-                model=model,
-                system_prompt=self.system_prompt,
-                toolsets=toolsets
-            )
         elif provider == "anthropic":
             model = AnthropicModel(model_name)
-            self.agent = Agent(
-                model=model,
-                system_prompt=self.system_prompt,
-                toolsets=toolsets
-            )
         elif provider == "ollama":
             # For Ollama, we need to specify the base URL
             ollama_provider = OpenAIProvider(
@@ -120,26 +139,25 @@ Respond helpfully and concisely to user queries, using tools as needed."""
                 api_key="ollama",  # Ollama doesn't need a real key
             )
             model = OpenAIModel(model_name, provider=ollama_provider)
-            self.agent = Agent(
-                model=model,
-                system_prompt=self.system_prompt,
-                toolsets=toolsets
-            )
         elif provider == "groq":
             model = GroqModel(model_name)
-            self.agent = Agent(
-                model=model,
-                system_prompt=self.system_prompt,
-                toolsets=toolsets
-            )
+        elif provider in ["google-gla", "google-vertex"]:
+            model = GeminiModel(model_name, provider=provider)
         else:
             raise ValueError(f"Unsupported provider: {provider}")
-            
+        
+        # Create the agent
+        agent = Agent(
+            model=model,
+            system_prompt=self.system_prompt,
+            toolsets=toolsets
+        )
+        
         # Enter agent context to connect to MCP servers
-        if self.agent and toolsets:
+        if toolsets:
             try:
                 # Store the agent context for proper cleanup
-                self._agent_context = await self.agent.__aenter__()
+                self.agent_contexts[model_string] = await agent.__aenter__()
             except Exception as e:
                 # Function to check if httpx.ConnectError is in the exception chain
                 def find_connect_error(exc):
@@ -171,26 +189,33 @@ Respond helpfully and concisely to user queries, using tools as needed."""
                     raise
                 # If we didn't find httpx.ConnectError, just re-raise
                 raise
+        
+        # Store the agent
+        self.agents[model_string] = agent
+    
+    async def set_model(self, model: str):
+        """Set the current model and ensure its agent exists."""
+        if model not in self.available_models:
+            raise ValueError(f"Model {model} not in available models")
+        
+        self.current_model = model
+        await self.get_or_create_agent(model)
     
     async def chat(self, message: str, conversation: list[Dict[str, Any]]) -> str:  # noqa: ARG002
-        """Generate a response to a user message."""
+        """Generate a response to a user message using the current model."""
         result = await self.chat_with_result(message, conversation)
         return str(result.output) if result.output else "I couldn't generate a response."
     
     async def chat_with_result(self, message: str, conversation: list[Dict[str, Any]]) -> AgentRunResult:  # noqa: ARG002
         """Generate a response and return the full result with message history."""
-        # Ensure agent is initialized
-        await self.initialize()
-        
-        if not self.agent:
-            raise RuntimeError("Agent not initialized")
+        agent = await self.get_or_create_agent(self.current_model)
         
         # Convert conversation history to format PydanticAI expects
         # For now, we'll just use the current message
         # TODO: Implement proper conversation context
         
         try:
-            result = await self.agent.run(message)
+            result = await agent.run(message)
             return result
         except UnexpectedModelBehavior as e:
             # Handle cases where model doesn't respond as expected
@@ -199,23 +224,33 @@ Respond helpfully and concisely to user queries, using tools as needed."""
             # Handle other errors
             raise RuntimeError(f"An error occurred: {str(e)}")
     
+    @property
+    def agent(self) -> Optional[Agent]:
+        """Get the current agent for compatibility."""
+        return self.agents.get(self.current_model)
     
     def get_model(self) -> str:
-        """Get the model string."""
-        return self.model
+        """Get the current model string."""
+        return self.current_model
+    
+    def get_available_models(self) -> Dict[str, Dict[str, str]]:
+        """Get all available models."""
+        return self.available_models
     
     async def cleanup(self):
-        """Clean up resources."""
-        if self._agent_context and self.agent:
-            try:
-                await self.agent.__aexit__(None, None, None)
-            except Exception:
-                pass
-            self._agent_context = None
+        """Clean up all resources."""
+        # Clean up all agent contexts
+        for model_string, context in self.agent_contexts.items():
+            if model_string in self.agents:
+                try:
+                    await self.agents[model_string].__aexit__(None, None, None)
+                except Exception:
+                    pass
+        
+        self.agent_contexts.clear()
+        self.agents.clear()
         self.mcp_servers = {}
-        self.agent = None
-        self._initialized = False
 
 
-# Global agent instance
-agent_manager = AlphaAgent()
+# Global agent manager instance
+agent_manager = AlphaAgentManager()

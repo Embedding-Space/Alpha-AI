@@ -68,3 +68,16 @@ class ConversationResponse(BaseModel):
     messages: List[MessageWithToolCalls] = Field(description="Recent messages with tool calls")
     total_messages: int = Field(description="Total messages in conversation")
     model: str = Field(description="Current model")
+
+
+class AvailableModel(BaseModel):
+    """Information about an available model."""
+    id: str = Field(description="Model identifier (e.g., 'openai:gpt-4o')")
+    name: str = Field(description="Display name (e.g., 'GPT-4o')")
+    provider: str = Field(description="Provider name (e.g., 'OpenAI')")
+
+
+class ModelsResponse(BaseModel):
+    """Response containing available models."""
+    models: List[AvailableModel] = Field(description="List of available models")
+    current: str = Field(description="Currently selected model")

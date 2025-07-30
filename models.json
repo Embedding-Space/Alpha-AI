@@ -1,0 +1,44 @@
+{
+  "models": [
+    {
+      "id": "openai:gpt-4.1-nano",
+      "name": "GPT-4.1 Nano",
+      "provider": "OpenAI"
+    },
+    {
+      "id": "openai:gpt-4o-mini",
+      "name": "GPT-4o Mini",
+      "provider": "OpenAI"
+    },
+    {
+      "id": "anthropic:claude-3-5-sonnet-latest",
+      "name": "Claude 3.5 Sonnet",
+      "provider": "Anthropic"
+    },
+    {
+      "id": "anthropic:claude-3-5-haiku-latest",
+      "name": "Claude 3.5 Haiku",
+      "provider": "Anthropic"
+    },
+    {
+      "id": "groq:llama-3.3-70b-versatile",
+      "name": "Llama 3.3 70B",
+      "provider": "Groq"
+    },
+    {
+      "id": "google-gla:gemini-2.0-flash",
+      "name": "Gemini 2.0 Flash",
+      "provider": "Google"
+    },
+    {
+      "id": "ollama:qwen2.5:14b",
+      "name": "Qwen 2.5 14B",
+      "provider": "Ollama (Local)"
+    },
+    {
+      "id": "ollama:gemma3n:e4b",
+      "name": "Gemma 3N E4B",
+      "provider": "Ollama (Local)"
+    }
+  ]
+}

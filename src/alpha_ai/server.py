@@ -3,7 +3,8 @@
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from fastapi import FastAPI, Depends
+from typing import Dict
+from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse
@@ -12,7 +13,7 @@ from sqlalchemy.orm import Session
 from alpha_ai.models import (
     ChatRequest, ChatResponse, ModelInfo, 
     ConversationResponse, ChatMessage, MessageWithToolCalls,
-    ToolCall, ToolReturn
+    ToolCall, ToolReturn, ModelsResponse
 )
 from pydantic_ai.messages import (
     ModelResponse, ModelRequest, ToolCallPart, ToolReturnPart,
@@ -314,6 +315,34 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
 async def get_model():
     """Get the current model."""
     return ModelInfo(model=agent_manager.get_model())
+
+
+@app.get(f"{settings.api_v1_prefix}/models", response_model=ModelsResponse)
+async def get_models():
+    """Get all available models."""
+    return ModelsResponse(
+        models=list(agent_manager.get_available_models().values()),
+        current=agent_manager.get_model()
+    )
+
+
+@app.post(f"{settings.api_v1_prefix}/conversation/new")
+async def new_conversation(request: Dict[str, str], db: Session = Depends(get_db)):
+    """Start a new conversation with a specific model."""
+    model = request.get("model")
+    if not model:
+        raise HTTPException(status_code=400, detail="Model is required")
+    
+    # Clear the current conversation
+    conversation_manager.clear_conversation(db)
+    
+    # Set the new model
+    try:
+        await agent_manager.set_model(model)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+    return {"status": "new conversation started", "model": model}
 
 
 @app.get(f"{settings.api_v1_prefix}/conversation", response_model=ConversationResponse)

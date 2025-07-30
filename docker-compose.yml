@@ -9,12 +9,14 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434/v1}
       - MCP_CONFIG_FILE=${MCP_CONFIG_FILE:-/app/mcp_config.json}
     volumes:
       - alpha-ai-data:/data
       - ./mcp_config.json:/app/mcp_config.json:ro
       - ./system_prompt.md:/app/system_prompt.md:ro
+      - ./models.json:/app/models.json:ro
       - npm-cache:/root/.npm
       - uv-cache:/root/.cache/uv
     networks:
