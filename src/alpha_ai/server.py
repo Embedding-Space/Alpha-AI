@@ -98,12 +98,21 @@ async def health_check():
 @app.post(f"{settings.api_v1_prefix}/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest, db: Session = Depends(get_db)):
     """Send a message and get a response."""
-    # Check if a model is selected
-    if not agent_manager.get_model():
-        raise HTTPException(status_code=400, detail="No model selected")
+    # Check if a model is selected, fall back to conversation model if needed
+    current_model = agent_manager.get_model()
+    if not current_model:
+        # Try to get model from existing conversation
+        conversation = conversation_manager.get_current_conversation(db)
+        if conversation and conversation.model:
+            # Restore the model from the conversation
+            print(f"Restoring model from conversation: {conversation.model}")
+            await agent_manager.set_model(conversation.model)
+            current_model = conversation.model
+        else:
+            raise HTTPException(status_code=400, detail="No model selected")
     
     # Set the model in the conversation manager
-    conversation_manager.set_model(agent_manager.get_model())
+    conversation_manager.set_model(current_model)
     
     # Add user message event
     conversation_manager.add_user_message(db, request.message)
@@ -134,7 +143,22 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
                         current_text_parts = []
                     
                     # Save tool call event
-                    args = part.args if isinstance(part.args, dict) else {}
+                    # Debug: log what we're getting
+                    print(f"DEBUG: Tool call {part.tool_name} - part.args type: {type(part.args)}, value: {part.args}")
+                    
+                    # Handle case where args might be a JSON string (same as streaming)
+                    args = part.args
+                    if isinstance(args, str):
+                        try:
+                            import json
+                            args = json.loads(args)
+                        except json.JSONDecodeError:
+                            # If it's not valid JSON, wrap it in a dict
+                            args = {"value": args}
+                    elif not isinstance(args, dict):
+                        # If it's not a dict or string, convert to dict
+                        args = {"value": str(args)}
+                    
                     conversation_manager.add_tool_call(db, part.tool_name, args, part.tool_call_id)
                     
                     # Track for response
@@ -189,12 +213,21 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
 @app.post(f"{settings.api_v1_prefix}/chat/stream")
 async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
     """Stream a response using Server-Sent Events with proper graph-based streaming."""
-    # Check if a model is selected
-    if not agent_manager.get_model():
-        raise HTTPException(status_code=400, detail="No model selected")
+    # Check if a model is selected, fall back to conversation model if needed
+    current_model = agent_manager.get_model()
+    if not current_model:
+        # Try to get model from existing conversation
+        conversation = conversation_manager.get_current_conversation(db)
+        if conversation and conversation.model:
+            # Restore the model from the conversation
+            print(f"Restoring model from conversation: {conversation.model}")
+            await agent_manager.set_model(conversation.model)
+            current_model = conversation.model
+        else:
+            raise HTTPException(status_code=400, detail="No model selected")
     
     # Set the model in the conversation manager
-    conversation_manager.set_model(agent_manager.get_model())
+    conversation_manager.set_model(current_model)
     
     # Add user message to database
     conversation_manager.add_user_message(db, request.message)
@@ -253,6 +286,9 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                             async for event in stream:
                                 if isinstance(event, FunctionToolCallEvent):
                                     # Tool is being called
+                                    # Debug: log what we're getting
+                                    print(f"DEBUG STREAMING: Tool call {event.part.tool_name} - event.part.args type: {type(event.part.args)}, value: {event.part.args}")
+                                    
                                     # Handle case where args might be a JSON string
                                     args = event.part.args
                                     if isinstance(args, str):

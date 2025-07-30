@@ -927,15 +927,16 @@
                                         null
                                     );
                                     currentToolCallsContainer.appendChild(toolCallDiv);
-                                    pendingToolCalls.set(data.tool_call_id, toolCallDiv);
+                                    // Store both the div and the tool call data
+                                    pendingToolCalls.set(data.tool_call_id, { div: toolCallDiv, call: data });
                                 } else if (data.type === 'tool_return') {
-                                    const toolCallDiv = pendingToolCalls.get(data.tool_call_id);
-                                    if (toolCallDiv) {
-                                        const contentDiv = toolCallDiv.querySelector('div:last-child');
+                                    const pending = pendingToolCalls.get(data.tool_call_id);
+                                    if (pending) {
+                                        const contentDiv = pending.div.querySelector('div:last-child');
                                         contentDiv.innerHTML = `
                                             <div>
                                                 <h4 class="text-xs uppercase text-gray-500 mb-1">Request</h4>
-                                                <pre class="bg-gray-900 p-3 rounded text-xs overflow-x-auto"><code>${JSON.stringify({ tool_name: data.tool_name, args: {} }, null, 2)}</code></pre>
+                                                <pre class="bg-gray-900 p-3 rounded text-xs overflow-x-auto"><code>${JSON.stringify({ tool_name: pending.call.tool_name, args: pending.call.args }, null, 2)}</code></pre>
                                             </div>
                                             <div>
                                                 <h4 class="text-xs uppercase text-gray-500 mb-1">Response</h4>
