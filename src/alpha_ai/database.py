@@ -175,14 +175,13 @@ class ConversationManager:
         return db.query(Conversation).filter_by(id=self.current_conversation_id).first()
     
     def clear_conversation(self, db: Session):
-        """Clear all conversations."""
-        # Delete all conversations (cascade will handle events)
-        db.query(Conversation).delete()
-        db.commit()
-        
-        # Reset state
+        """Clear the current conversation by starting a new one."""
+        # Don't delete old conversations - just start fresh
         self.current_conversation_id = None
         self.event_position = 0
+        
+        # Start a new conversation
+        self.start_new_conversation(db)
 
 
 # Global conversation manager

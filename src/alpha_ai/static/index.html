@@ -89,7 +89,6 @@
             padding: 12px 16px;
             border-radius: 18px;
             word-wrap: break-word;
-            white-space: pre-wrap;
         }
         
         .message.user {
@@ -116,7 +115,12 @@
         .message h3 { font-size: 1.1em; }
         
         .message p {
-            margin: 0.5em 0;
+            margin: 0 0 0.5em 0;
+        }
+        
+        /* Remove margin between consecutive paragraphs */
+        .message p + p {
+            margin-top: 0.5em;
         }
         
         /* Remove top margin from first element */
@@ -298,10 +302,13 @@
             padding: 16px;
             background: #2a2a2a;
             border-top: 1px solid #3a3a3a;
+            display: flex;
+            gap: 12px;
+            align-items: flex-end;
         }
         
         #input {
-            width: 100%;
+            flex: 1;
             background: #1a1a1a;
             border: 1px solid #3a3a3a;
             color: #e0e0e0;
@@ -322,6 +329,45 @@
         
         #input::placeholder {
             color: #666;
+        }
+        
+        #input:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+        
+        #send-button {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: none;
+            background: #0084ff;
+            color: white;
+            font-size: 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+        
+        #send-button:hover:not(:disabled) {
+            background: #0073e6;
+            transform: scale(1.05);
+        }
+        
+        #send-button:disabled {
+            background: #4a4a4a;
+            cursor: not-allowed;
+        }
+        
+        #send-button.stop {
+            background: #ff3b30;
+        }
+        
+        #send-button.stop:hover {
+            background: #e60000;
         }
         
         /* Scrollbar styling */
@@ -400,6 +446,7 @@
     
     <div id="input-container">
         <textarea id="input" placeholder="Message Alpha..." rows="1"></textarea>
+        <button id="send-button" title="Send message">↑</button>
     </div>
     
     <script>
@@ -409,13 +456,15 @@
         const modelSelect = document.getElementById('model-select');
         const newChatButton = document.getElementById('new-chat-button');
         const streamingToggle = document.getElementById('streaming-toggle');
+        const sendButton = document.getElementById('send-button');
         let typingIndicator = null;
         let useStreaming = true; // Default to streaming mode
+        let currentReader = null; // Track current stream reader for aborting
         
         // Configure marked for GitHub-flavored Markdown
         marked.setOptions({
             gfm: true,
-            breaks: true,
+            breaks: false,  // Don't convert single line breaks to <br>
             highlight: function(code, lang) {
                 if (lang && hljs.getLanguage(lang)) {
                     try {
@@ -430,9 +479,16 @@
         
         // Render markdown to HTML
         function renderMarkdown(text) {
-            // Parse markdown and trim any trailing whitespace/newlines
-            const html = marked.parse(text);
-            // Remove trailing <p> tags with only whitespace
+            // Normalize excessive newlines while preserving intentional paragraph breaks
+            const normalized = text
+                .replace(/\n\s*\n\s*\n+/g, '\n\n')  // Replace 3+ newlines with exactly 2
+                .replace(/\n\n+/g, '\n\n')           // Ensure max 2 consecutive newlines
+                .trim();                             // Remove leading/trailing whitespace
+            
+            // Parse markdown
+            const html = marked.parse(normalized);
+            
+            // Remove trailing empty paragraphs
             return html.replace(/<p>\s*<\/p>\s*$/g, '').trim();
         }
         
@@ -467,6 +523,17 @@
         input.addEventListener('keydown', async (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
+                if (!sendButton.disabled && !sendButton.classList.contains('stop')) {
+                    await sendMessage();
+                }
+            }
+        });
+        
+        // Handle send/stop button
+        sendButton.addEventListener('click', async () => {
+            if (sendButton.classList.contains('stop')) {
+                stopGeneration();
+            } else {
                 await sendMessage();
             }
         });
@@ -637,10 +704,37 @@
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
         
+        // Stop generation
+        function stopGeneration() {
+            if (currentReader) {
+                currentReader.cancel();
+                currentReader = null;
+            }
+            
+            // Reset button state
+            sendButton.classList.remove('stop');
+            sendButton.innerHTML = '↑';
+            sendButton.title = 'Send message';
+            sendButton.disabled = false;
+            
+            // Remove typing indicator
+            if (typingIndicator) {
+                typingIndicator.remove();
+                typingIndicator = null;
+            }
+            
+            // Add system message
+            addMessage('system', 'Generation stopped by user');
+        }
+        
         // Send message with streaming support
         async function sendMessage() {
             const message = input.value.trim();
             if (!message) return;
+            
+            // Disable input and update button
+            input.disabled = true;
+            sendButton.disabled = true;
             
             // Clear and reset input
             input.value = '';
@@ -657,6 +751,10 @@
             } else {
                 await sendMessageNonStreaming(message);
             }
+            
+            // Re-enable input
+            input.disabled = false;
+            input.focus();
         }
         
         // Non-streaming message send (original method)
@@ -679,12 +777,23 @@
                 }
             } catch (error) {
                 addMessage('system', `Error: ${error.message}`);
+            } finally {
+                // Reset button state
+                sendButton.disabled = false;
+                sendButton.innerHTML = '↑';
+                sendButton.title = 'Send message';
             }
         }
         
         // Streaming message send using SSE
         async function sendMessageStreaming(message) {
             try {
+                // Update button to stop mode
+                sendButton.classList.add('stop');
+                sendButton.innerHTML = '⏹';
+                sendButton.title = 'Stop generation';
+                sendButton.disabled = false;
+                
                 const response = await fetch(`${API_BASE}/chat/stream`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -703,11 +812,8 @@
                     typingIndicator = null;
                 }
                 
-                // Create initial message div for streaming content
-                let currentMessageDiv = document.createElement('div');
-                currentMessageDiv.className = 'message assistant';
-                currentMessageDiv.textContent = '';
-                messagesDiv.appendChild(currentMessageDiv);
+                // We'll create the message div when we actually get text
+                let currentMessageDiv = null;
                 
                 // Track the raw text for markdown rendering
                 let currentMessageText = '';
@@ -718,6 +824,7 @@
                 
                 // Read the stream
                 const reader = response.body.getReader();
+                currentReader = reader; // Track for cancellation
                 const decoder = new TextDecoder();
                 let buffer = '';
                 
@@ -792,10 +899,17 @@
                                         messagesDiv.appendChild(currentToolCallsContainer);
                                     }
                                     
-                                    // Clean up empty message divs
-                                    if (!currentMessageDiv.textContent.trim()) {
+                                    // Clean up empty message divs if they exist
+                                    if (currentMessageDiv && !currentMessageText.trim()) {
                                         currentMessageDiv.remove();
                                     }
+                                    
+                                    // Reset button state when done
+                                    currentReader = null;
+                                    sendButton.classList.remove('stop');
+                                    sendButton.innerHTML = '↑';
+                                    sendButton.title = 'Send message';
+                                    sendButton.disabled = false;
                                 } else if (data.type === 'error') {
                                     addMessage('system', `Error: ${data.error}`);
                                 }
@@ -805,8 +919,23 @@
                         }
                     }
                 }
+                
+                // Final cleanup: remove any empty message divs after streaming ends
+                if (currentMessageDiv && !currentMessageText.trim()) {
+                    currentMessageDiv.remove();
+                }
             } catch (error) {
-                addMessage('system', `Error: ${error.message}`);
+                // Handle cancellation gracefully
+                if (error.name !== 'AbortError') {
+                    addMessage('system', `Error: ${error.message}`);
+                }
+            } finally {
+                // Reset button state
+                currentReader = null;
+                sendButton.classList.remove('stop');
+                sendButton.innerHTML = '↑';
+                sendButton.title = 'Send message';
+                sendButton.disabled = false;
             }
         }
         
