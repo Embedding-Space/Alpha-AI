@@ -18,6 +18,7 @@ services:
       - alpha-ai-data:/data
       - ./mcp_config.json:/app/mcp_config.json:ro
       - ./system_prompt.md:/app/system_prompt.md:ro
+      - ./system_prompts:/app/system_prompts:ro
       - ./models.json:/app/models.json:ro
       - npm-cache:/root/.npm
       - uv-cache:/root/.cache/uv

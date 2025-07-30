@@ -245,6 +245,13 @@ class AlphaAgentManager:
         """Get all available models."""
         return self.available_models
     
+    def set_system_prompt(self, prompt: str):
+        """Set the system prompt for new agents."""
+        self.system_prompt = prompt
+        # Clear existing agents so they'll be recreated with the new prompt
+        self.agents.clear()
+        self.agent_contexts.clear()
+    
     async def cleanup(self):
         """Clean up all resources."""
         # Clean up all agent contexts

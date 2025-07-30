@@ -33,6 +33,22 @@
         .markdown-content table { border-collapse: collapse; margin-top: 0.5rem; margin-bottom: 0.5rem; }
         .markdown-content th, .markdown-content td { border: 1px solid rgb(75 85 99); padding: 0.25rem 0.75rem; }
         .markdown-content th { background-color: rgb(55 65 81); }
+        
+        /* Styles for prompt content */
+        .prompt-content { color: rgb(209 213 219); line-height: 1.75; }
+        .prompt-content h1 { font-size: 1.875rem; line-height: 2.25rem; font-weight: 700; margin-top: 1.5rem; margin-bottom: 1rem; color: rgb(243 244 246); }
+        .prompt-content h2 { font-size: 1.5rem; line-height: 2rem; font-weight: 700; margin-top: 1.5rem; margin-bottom: 0.75rem; color: rgb(243 244 246); }
+        .prompt-content h3 { font-size: 1.25rem; line-height: 1.75rem; font-weight: 600; margin-top: 1.25rem; margin-bottom: 0.5rem; color: rgb(229 231 235); }
+        .prompt-content p { margin-bottom: 1rem; line-height: 1.75; }
+        .prompt-content ul { list-style-type: disc; margin-left: 1.5rem; margin-bottom: 1rem; }
+        .prompt-content ol { list-style-type: decimal; margin-left: 1.5rem; margin-bottom: 1rem; }
+        .prompt-content li { margin-bottom: 0.5rem; line-height: 1.75; }
+        .prompt-content code { background-color: rgb(55 65 81); padding: 0.125rem 0.375rem; border-radius: 0.25rem; font-size: 0.875rem; font-family: monospace; }
+        .prompt-content pre { background-color: rgb(31 41 55); padding: 1rem; border-radius: 0.5rem; overflow-x: auto; margin: 1rem 0; }
+        .prompt-content pre code { background-color: transparent; padding: 0; }
+        .prompt-content blockquote { border-left: 4px solid rgb(75 85 99); padding-left: 1rem; font-style: italic; color: rgb(156 163 175); margin: 1rem 0; }
+        .prompt-content strong { font-weight: 600; color: rgb(243 244 246); }
+        .prompt-content em { font-style: italic; }
 
         /* Scrollbar styling */
         ::-webkit-scrollbar { width: 0.5rem; }
@@ -70,6 +86,13 @@
             <span id="current-model-name" class="text-sm">Select model...</span>
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+        </button>
+        
+        <!-- System Prompt Info Button -->
+        <button id="prompt-info-btn" class="p-2 text-gray-400 hover:text-gray-200 hover:bg-gray-700 rounded-lg transition-colors" title="View system prompt">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
             </svg>
         </button>
         
@@ -129,14 +152,45 @@
             </div>
 
             <!-- Modal Footer -->
-            <div class="p-6 border-t border-gray-700 flex justify-between items-center">
-                <div class="text-sm text-gray-400">
-                    <span id="model-count">0</span> models available
+            <div class="p-6 border-t border-gray-700">
+                <div class="flex justify-between items-center mb-4">
+                    <div class="text-sm text-gray-400">
+                        <span id="model-count">0</span> models available
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <label class="text-sm text-gray-400">System Prompt:</label>
+                        <select id="prompt-selector" 
+                            class="px-3 py-1.5 bg-gray-700 border border-gray-600 rounded-lg text-sm focus:outline-none focus:border-gray-500">
+                            <option value="none">none</option>
+                        </select>
+                    </div>
                 </div>
                 <button id="start-new-chat" 
-                    class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed">
+                    class="w-full px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed">
                     Start New Chat
                 </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- System Prompt Display Modal -->
+    <div id="prompt-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+        <div class="bg-gray-800 rounded-xl max-w-4xl w-full max-h-[80vh] flex flex-col">
+            <!-- Modal Header -->
+            <div class="p-6 border-b border-gray-700 flex items-center justify-between">
+                <h2 class="text-2xl font-semibold">System Prompt</h2>
+                <button id="close-prompt-modal" class="text-gray-400 hover:text-gray-200">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            
+            <!-- Prompt Content -->
+            <div class="p-6 overflow-y-auto flex-1">
+                <div id="prompt-content" class="prompt-content">
+                    <p class="text-gray-400">No system prompt loaded.</p>
+                </div>
             </div>
         </div>
     </div>
@@ -156,6 +210,11 @@
         const inputPriceEl = document.getElementById('input-price');
         const outputPriceEl = document.getElementById('output-price');
         const startNewChatBtn = document.getElementById('start-new-chat');
+        const promptSelector = document.getElementById('prompt-selector');
+        const promptInfoBtn = document.getElementById('prompt-info-btn');
+        const promptModal = document.getElementById('prompt-modal');
+        const closePromptModalBtn = document.getElementById('close-prompt-modal');
+        const promptContent = document.getElementById('prompt-content');
         
         let typingIndicator = null;
         let typingIndicatorTimeout = null;
@@ -164,6 +223,8 @@
         let availableModels = [];
         let currentModel = null;
         let selectedModel = null;
+        let availablePrompts = [];
+        let currentSystemPrompt = null;
         
         // Configure marked
         marked.setOptions({
@@ -230,6 +291,28 @@
         modelModal.addEventListener('click', (e) => {
             if (e.target === modelModal) {
                 modelModal.classList.add('hidden');
+            }
+        });
+        
+        // Prompt info button
+        promptInfoBtn.addEventListener('click', () => {
+            if (currentSystemPrompt) {
+                // Use marked to render markdown
+                promptContent.innerHTML = marked.parse(currentSystemPrompt);
+            } else {
+                promptContent.innerHTML = '<p class="text-gray-400">No system prompt configured for this conversation.</p>';
+            }
+            promptModal.classList.remove('hidden');
+        });
+        
+        // Close prompt modal
+        closePromptModalBtn.addEventListener('click', () => {
+            promptModal.classList.add('hidden');
+        });
+        
+        promptModal.addEventListener('click', (e) => {
+            if (e.target === promptModal) {
+                promptModal.classList.add('hidden');
             }
         });
         
@@ -498,10 +581,16 @@
                 const originalText = startNewChatBtn.textContent;
                 startNewChatBtn.textContent = selectedModel === currentModel ? 'Clearing...' : 'Starting...';
                 
+                const promptSelector = document.getElementById('prompt-selector');
+                const selectedPrompt = promptSelector.value;
+                
                 const response = await fetch(`${API_BASE}/conversation/new`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ model: selectedModel })
+                    body: JSON.stringify({ 
+                        model: selectedModel,
+                        prompt: selectedPrompt
+                    })
                 });
                 
                 if (response.ok) {
@@ -511,6 +600,18 @@
                     if (model) {
                         currentModelName.textContent = model.name;
                         updatePricingDisplay(model);
+                    }
+                    
+                    // Update the current system prompt
+                    if (selectedPrompt === 'none') {
+                        currentSystemPrompt = null;
+                    } else {
+                        // Fetch the prompt content
+                        const promptResponse = await fetch(`${API_BASE}/prompts/${selectedPrompt}`);
+                        if (promptResponse.ok) {
+                            const promptData = await promptResponse.json();
+                            currentSystemPrompt = promptData.content;
+                        }
                     }
                     updateInputState(); // Enable input and send button
                     modelModal.classList.add('hidden');
@@ -921,6 +1022,11 @@
                     updateInputState();
                 }
                 
+                // Store the current system prompt
+                if (data.system_prompt !== undefined) {
+                    currentSystemPrompt = data.system_prompt;
+                }
+                
                 data.messages.forEach(msg => {
                     addMessage(msg.role, msg.content, msg.tool_calls);
                 });
@@ -957,9 +1063,33 @@
             }
         }
         
+        // Load available prompts
+        async function loadPrompts() {
+            try {
+                const response = await fetch(`${API_BASE}/prompts`);
+                const data = await response.json();
+                availablePrompts = data.prompts;
+                
+                // Update the prompt selector
+                promptSelector.innerHTML = '';
+                availablePrompts.forEach(prompt => {
+                    const option = document.createElement('option');
+                    option.value = prompt;
+                    option.textContent = prompt;
+                    promptSelector.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Error loading prompts:', error);
+                availablePrompts = ['none'];
+            }
+        }
+        
         // Initialize
         async function initialize() {
             await checkConfig();
+            
+            // Load prompts for the selector
+            await loadPrompts();
             
             // Load history first to see if there's a model from the conversation
             await loadHistory();

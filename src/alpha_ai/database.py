@@ -28,6 +28,7 @@ class Conversation(Base):
     
     id = Column(Integer, primary_key=True)
     model = Column(String, nullable=True)  # Model used for this conversation
+    system_prompt = Column(Text, nullable=True)  # System prompt used for this conversation
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
@@ -87,9 +88,9 @@ class ConversationManager:
         self.event_position = 0
         self.current_model: Optional[str] = None  # Track the current model
     
-    def start_new_conversation(self, db: Session, model: Optional[str] = None) -> int:
+    def start_new_conversation(self, db: Session, model: Optional[str] = None, system_prompt: Optional[str] = None) -> int:
         """Start a new conversation."""
-        conversation = Conversation(model=model)
+        conversation = Conversation(model=model, system_prompt=system_prompt)
         db.add(conversation)
         db.commit()
         db.refresh(conversation)
@@ -181,7 +182,7 @@ class ConversationManager:
         """Set the current model for new conversations."""
         self.current_model = model
     
-    def clear_conversation(self, db: Session, model: Optional[str] = None):
+    def clear_conversation(self, db: Session, model: Optional[str] = None, system_prompt: Optional[str] = None):
         """Clear the current conversation by starting a new one."""
         # Don't delete old conversations - just start fresh
         self.current_conversation_id = None
@@ -191,8 +192,8 @@ class ConversationManager:
         if model:
             self.current_model = model
         
-        # Start a new conversation with the specified model
-        self.start_new_conversation(db, model)
+        # Start a new conversation with the specified model and system prompt
+        self.start_new_conversation(db, model, system_prompt)
 
 
 # Global conversation manager

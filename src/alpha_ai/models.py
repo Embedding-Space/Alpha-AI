@@ -68,6 +68,7 @@ class ConversationResponse(BaseModel):
     messages: List[MessageWithToolCalls] = Field(description="Recent messages with tool calls")
     total_messages: int = Field(description="Total messages in conversation")
     model: str = Field(description="Current model")
+    system_prompt: Optional[str] = Field(description="System prompt for this conversation", default=None)
 
 
 class AvailableModel(BaseModel):

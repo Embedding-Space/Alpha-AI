@@ -5,7 +5,7 @@
 mcp_config.json
 
 # System prompt (can contain sensitive or experimental content)
-system_prompt.md
+system_prompts/
 
 # Python-generated files
 __pycache__/

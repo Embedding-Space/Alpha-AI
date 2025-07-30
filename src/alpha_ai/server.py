@@ -15,6 +15,7 @@ from alpha_ai.models import (
     ConversationResponse, ChatMessage, MessageWithToolCalls,
     ToolCall, ToolReturn, ModelsResponse
 )
+from typing import List
 from pydantic_ai.messages import (
     ModelResponse, ModelRequest, ToolCallPart, ToolReturnPart,
     TextPart, TextPartDelta, ToolCallPartDelta,
@@ -344,12 +345,55 @@ async def get_models():
     )
 
 
+@app.get(f"{settings.api_v1_prefix}/prompts")
+async def get_prompts():
+    """Get all available system prompt files."""
+    prompts_dir = Path("/app/system_prompts")
+    prompts = ["none"]  # Always include "none" as the first option
+    
+    if prompts_dir.exists() and prompts_dir.is_dir():
+        # Get all .md files in the directory
+        for file in sorted(prompts_dir.glob("*.md")):
+            prompts.append(file.name)  # Include full filename with .md extension
+    
+    return {"prompts": prompts}
+
+
+@app.get(f"{settings.api_v1_prefix}/prompts/{{prompt_name}}")
+async def get_prompt_content(prompt_name: str):
+    """Get the content of a specific prompt file."""
+    if prompt_name == "none":
+        return {"content": ""}
+    
+    prompt_file = Path(f"/app/system_prompts/{prompt_name}")
+    if not prompt_file.exists():
+        raise HTTPException(status_code=404, detail="Prompt file not found")
+    
+    try:
+        content = prompt_file.read_text(encoding="utf-8")
+        return {"content": content}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error reading prompt file: {str(e)}")
+
+
 @app.post(f"{settings.api_v1_prefix}/conversation/new")
 async def new_conversation(request: Dict[str, str], db: Session = Depends(get_db)):
-    """Start a new conversation with a specific model."""
+    """Start a new conversation with a specific model and prompt."""
     model = request.get("model")
     if not model:
         raise HTTPException(status_code=400, detail="Model is required")
+    
+    prompt_name = request.get("prompt", "none")
+    system_prompt = ""
+    
+    # Load the system prompt content if specified
+    if prompt_name != "none":
+        prompt_file = Path(f"/app/system_prompts/{prompt_name}")
+        if prompt_file.exists():
+            try:
+                system_prompt = prompt_file.read_text(encoding="utf-8")
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Error reading prompt file: {str(e)}")
     
     # Set the new model first
     try:
@@ -357,10 +401,14 @@ async def new_conversation(request: Dict[str, str], db: Session = Depends(get_db
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-    # Clear the current conversation and start a new one with the model
-    conversation_manager.clear_conversation(db, model)
+    # Update the agent's system prompt
+    if system_prompt:
+        agent_manager.set_system_prompt(system_prompt)
     
-    return {"status": "new conversation started", "model": model}
+    # Clear the current conversation and start a new one with the model and prompt
+    conversation_manager.clear_conversation(db, model, system_prompt)
+    
+    return {"status": "new conversation started", "model": model, "prompt": prompt_name}
 
 
 @app.get(f"{settings.api_v1_prefix}/conversation", response_model=ConversationResponse)
@@ -372,7 +420,8 @@ async def get_conversation(limit: int = 50, db: Session = Depends(get_db)):
         return ConversationResponse(
             messages=[],
             total_messages=0,
-            model=agent_manager.get_model()
+            model=agent_manager.get_model(),
+            system_prompt=None
         )
     
     # Reconstruct messages from events
@@ -449,7 +498,8 @@ async def get_conversation(limit: int = 50, db: Session = Depends(get_db)):
     return ConversationResponse(
         messages=messages,
         total_messages=len(conversation.events),
-        model=conversation.model or ""  # Use the model stored with the conversation
+        model=conversation.model or "",  # Use the model stored with the conversation
+        system_prompt=conversation.system_prompt  # Include the system prompt
     )
 
 
