@@ -50,7 +50,6 @@ docker compose restart
 ## Configuration
 
 Environment variables:
-- `DEFAULT_MODEL` - Default model to use (default: `ollama:qwen2.5:14b`)
 - `MCP_CONFIG_FILE` - Path to MCP servers config file (default: `/app/mcp_config.json` in Docker)
 - `MCP_SERVERS` - Comma-separated list of servers to enable (optional)
 

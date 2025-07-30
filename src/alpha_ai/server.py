@@ -33,7 +33,6 @@ async def lifespan(_app: FastAPI):
     """Application lifespan manager."""
     # Startup
     print(f"Starting Alpha AI server...")
-    print(f"Model: {settings.model}")
     if settings.mcp_config_file:
         print(f"MCP config file: {settings.mcp_config_file}")
         if settings.mcp_servers:

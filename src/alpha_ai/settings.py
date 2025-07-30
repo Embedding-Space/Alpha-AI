@@ -12,8 +12,6 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
     
-    # Model configuration (optional - defaults to none)
-    model: Optional[str] = None
     
     # Context window settings
     conversation_window_size: int = 10

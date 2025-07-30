@@ -83,4 +83,4 @@ class AvailableModel(BaseModel):
 class ModelsResponse(BaseModel):
     """Response containing available models."""
     models: List[AvailableModel] = Field(description="List of available models")
-    current: str = Field(description="Currently selected model")
+    current: Optional[str] = Field(description="Currently selected model")

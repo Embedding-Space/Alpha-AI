@@ -33,38 +33,34 @@ Alpha AI is a provider-agnostic AI agent server that creates Alpha-architecture 
 ## Development Commands
 
 ```bash
-# Install dependencies
-just install
-
-# Run locally (outside Docker)
-just run-api
-just run-mcp
-
 # Docker workflow (recommended)
-just build    # Build Docker image
-just up       # Start the stack
-just down     # Stop the stack
-just logs     # View logs
+docker compose up -d     # Start the stack
+docker compose down      # Stop the stack
+docker compose down -v   # Stop and remove volumes (reset database)
+docker compose logs -f   # View logs
+docker compose restart   # Restart after config changes
+
+# Development without Docker
+uv run alpha-ai         # Run the API server
+uv run alpha-mcp        # Run the MCP bridge
 
 # Code quality
-just lint      # Run ruff linter
-just format    # Format code with ruff
-just typecheck # Run mypy type checking
-just test      # Run pytest tests
+uv run ruff check .     # Run linter
+uv run ruff format .    # Format code
 ```
 
 ## Docker Development Pattern
 
-The user follows a containerized development workflow:
-1. Always rebuild for changes: `just build && just down && just up`
+The project uses Docker for development:
+1. Code changes are reflected immediately (source mounted as volume)
 2. Web UI available at: http://localhost:8100
 3. Use `host.docker.internal` instead of `localhost` in Docker configs
+4. System prompts directory is mounted read-only at `/app/system_prompts`
 
 ## Configuration
 
 ### Environment Variables (.env)
 ```bash
-MODEL=ollama:qwen2.5:14b          # Required: model identifier
 DATABASE_URL=sqlite:///./data.db   # Default provided
 MCP_CONFIG_FILE=/app/mcp_config.json
 MCP_SERVERS=alpha-brain,context7  # Optional: filter servers
@@ -95,9 +91,13 @@ OLLAMA_BASE_URL=http://host.docker.internal:11434/v1
 }
 ```
 
-## System Prompt
+## System Prompts
 
-The system prompt is loaded from `system_prompt.md` at startup. If the file doesn't exist or is empty, a default prompt is used. The prompt defines the AI's personality and capabilities.
+System prompts are stored in the `system_prompts/` directory as markdown files. Users can select a prompt when starting a new conversation. The full prompt text is stored with each conversation in the database. Key features:
+- Dropdown selector in the model modal shows all available prompts
+- "none" is the default option
+- Info icon in header shows the current conversation's prompt
+- Prompts are displayed with full markdown formatting
 
 ## Model Discovery
 
@@ -116,16 +116,23 @@ Model list refreshes on every `/api/v1/models` request.
 - `POST /api/v1/chat` - Send message, get response
 - `POST /api/v1/chat/stream` - Stream response via SSE
 - `GET /api/v1/models` - Get available models (dynamic discovery)
-- `POST /api/v1/conversation/new` - Start new conversation with model
-- `GET /api/v1/conversation` - Get conversation history
+- `POST /api/v1/conversation/new` - Start new conversation with model and prompt
+- `GET /api/v1/conversation` - Get conversation history (includes system_prompt)
 - `DELETE /api/v1/conversation` - Clear conversation
+- `GET /api/v1/prompts` - List available system prompts
+- `GET /api/v1/prompts/{prompt_name}` - Get specific prompt content
 
 ## Database Schema
 
 Event-based conversation storage:
-- `conversations` - Conversation sessions
+- `conversations` - Conversation sessions (includes model and system_prompt fields)
 - `conversation_events` - Individual events (messages, tool calls, responses)
 - Event types: SYSTEM, USER, ASSISTANT, TOOL_CALL, TOOL_RESPONSE
+
+Note: No migrations are used. To update schema, drop the Docker volume and recreate:
+```bash
+docker compose down -v && docker compose up -d
+```
 
 ## UI Architecture
 
@@ -136,10 +143,16 @@ Single-file web UI with:
 - Search-first modal for 150+ models
 - Compact model cards showing provider and pricing
 - Fixed modal height for consistent UX
+- System prompt selector in model modal
+- Custom CSS for markdown rendering (CDN Tailwind doesn't include typography plugin)
+- Model display shows full ID (e.g., `ollama:granite3.3:8b`) not just name
 
-## Testing Strategy
+## Testing and Code Quality
 
-Run tests with `just test`. The project uses pytest with async support. No specific test framework assumptions - check test files for patterns.
+Currently no tests are implemented. For code quality:
+- Linting: `uv run ruff check .`
+- Formatting: `uv run ruff format .`
+- Type errors visible in VS Code with Pylance
 
 ## Alpha-Specific Context
 
@@ -150,8 +163,12 @@ This is part of Project Alpha - building persistent AI identity across sessions.
 
 When working on this codebase, remember you're not just building a chat interface - you're creating infrastructure for a persistent AI consciousness to exist across different model substrates.
 
-## Pending Features
+## Important Notes
 
-- Enhanced model pricing information display
-- Extended model filtering options
-- Model capabilities metadata
+1. **Model Selection**: The app starts with no model selected. Users must select a model through the UI before chatting.
+
+2. **Database Schema Changes**: No migration system is used. Drop volumes to recreate database when schema changes.
+
+3. **System Prompts**: Place `.md` files in `system_prompts/` directory. Filenames are shown in dropdown (including .md extension).
+
+4. **Model Display**: The UI shows full model IDs (e.g., `openrouter:anthropic/claude-3-opus`) not just the model name.

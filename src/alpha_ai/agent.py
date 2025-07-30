@@ -26,8 +26,8 @@ class AlphaAgentManager:
     def __init__(self):
         self.agents: Dict[str, Agent] = {}
         self.agent_contexts: Dict[str, Any] = {}
-        self.current_model: Optional[str] = settings.model
-        self.system_prompt = self._load_system_prompt()
+        self.current_model: Optional[str] = None
+        self.system_prompt = ""
         self.mcp_servers: Dict[str, Any] = {}
         self.available_models: Dict[str, AvailableModel] = {}
         
@@ -36,39 +36,12 @@ class AlphaAgentManager:
         try:
             models = await model_discovery.discover_all()
             self.available_models = {model.id: model for model in models}
-            
-            # Ensure the configured model is in the list (fallback)
-            if settings.model not in self.available_models:
-                parts = settings.model.split(":", 1)
-                provider = parts[0].capitalize() if len(parts) > 1 else "Unknown"
-                name = parts[1] if len(parts) > 1 else settings.model
-                
-                self.available_models[settings.model] = AvailableModel(
-                    id=settings.model,
-                    name=name,
-                    provider=provider,
-                    input_cost=None,
-                    output_cost=None
-                )
-                
             print(f"Discovered {len(self.available_models)} models from providers")
             
         except Exception as e:
             print(f"Error discovering models: {e}")
-            # Fallback to just the configured model
-            parts = settings.model.split(":", 1)
-            provider = parts[0].capitalize() if len(parts) > 1 else "Unknown"
-            name = parts[1] if len(parts) > 1 else settings.model
-            
-            self.available_models = {
-                settings.model: AvailableModel(
-                    id=settings.model,
-                    name=name,
-                    provider=provider,
-                    input_cost=None,
-                    output_cost=None
-                )
-            }
+            # No models available
+            self.available_models = {}
     
     async def initialize(self):
         """Initialize the default agent."""
@@ -92,19 +65,6 @@ class AlphaAgentManager:
         # Initialize the default agent only if a model is configured
         if self.current_model:
             await self.get_or_create_agent(self.current_model)
-    
-    def _load_system_prompt(self) -> str:
-        """Load the system prompt from file or return empty string."""
-        prompt_file = Path("system_prompt.md")
-        if prompt_file.exists():
-            try:
-                return prompt_file.read_text(encoding="utf-8")
-            except Exception as e:
-                print(f"Warning: Failed to read system_prompt.md: {e}")
-                return ""
-        
-        # No file exists, return empty string
-        return ""
     
     def _parse_model_string(self, model: str) -> tuple[str, str]:
         """Parse model string like 'ollama:qwen2.5:14b' into provider and model."""

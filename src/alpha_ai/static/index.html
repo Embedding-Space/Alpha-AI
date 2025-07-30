@@ -154,7 +154,7 @@
             <!-- Modal Footer -->
             <div class="p-6 border-t border-gray-700">
                 <div class="flex justify-between items-center mb-4">
-                    <div class="text-sm text-gray-400">
+                    <div class="text-sm text-gray-400" id="model-count-container">
                         <span id="model-count">0</span> models available
                     </div>
                     <div class="flex items-center gap-3">
@@ -257,27 +257,33 @@
         modelSelectorBtn.addEventListener('click', async () => {
             modelModal.classList.remove('hidden');
             
-            // Clear search and show empty state
+            // Clear search and render all models
             modelSearch.value = '';
-            modelList.innerHTML = `
-                <div class="flex items-center justify-center py-24 text-gray-500">
-                    <div class="text-center">
-                        <svg class="w-12 h-12 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-                        </svg>
-                        <p class="text-lg">Start typing to search models</p>
-                        <p class="text-sm mt-1">Try "gpt", "claude", or "llama"</p>
-                    </div>
-                </div>
-            `;
-            modelCount.textContent = '0';
+            if (availableModels.length > 0) {
+                renderModelList(''); // Show all models
+            } else {
+                modelList.innerHTML = ''; // Clear while loading
+                modelCount.textContent = '0';
+            }
             
             // Load models in background if not already loaded
             if (availableModels.length === 0) {
+                // Show loading state with spinner only
+                const modelCountContainer = document.getElementById('model-count-container');
+                modelCountContainer.innerHTML = `<i class="fas fa-spinner fa-spin"></i>`;
+                
                 loadModels().then(() => {
-                    // Update count but don't render unless there's a search term
-                    modelCount.textContent = availableModels.length;
+                    // Update count after loading
+                    modelCountContainer.innerHTML = `<span id="model-count">${availableModels.length}</span> models available`;
+                    // Render all models now that they're loaded
+                    renderModelList('');
+                }).catch(() => {
+                    // Show error but don't break the UI
+                    modelCountContainer.innerHTML = `<span id="model-count" class="text-red-400">Error</span> loading models`;
                 });
+            } else {
+                // Models already loaded, just update count
+                modelCount.textContent = availableModels.length;
             }
             
             selectedModel = currentModel;
@@ -331,7 +337,7 @@
                 input.placeholder = 'Select a model first...';
                 sendButton.classList.add('opacity-50', 'cursor-not-allowed');
             } else {
-                input.placeholder = 'Message Alpha...';
+                input.placeholder = '';
                 sendButton.classList.remove('opacity-50', 'cursor-not-allowed');
             }
         }
@@ -382,7 +388,7 @@
                         // Only update if it's still showing "Select model..." 
                         // (i.e., wasn't already set by loadHistory)
                         if (currentModelName.textContent === 'Select model...') {
-                            currentModelName.textContent = model.name;
+                            currentModelName.textContent = model.id;
                         }
                         updatePricingDisplay(model);
                     }
@@ -397,41 +403,34 @@
                 modelCount.textContent = availableModels.length;
             } catch (error) {
                 console.error('Error loading models:', error);
-                currentModelName.textContent = 'Error loading models';
+                // Don't change the button text on error - keep it as is
             }
         }
         
         // Render model list
         function renderModelList(searchTerm = '') {
-            // If no search term, show empty state
-            if (!searchTerm) {
-                modelList.innerHTML = `
-                    <div class="flex items-center justify-center py-24 text-gray-500">
-                        <div class="text-center">
-                            <svg class="w-12 h-12 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-                            </svg>
-                            <p class="text-lg">Start typing to search models</p>
-                            <p class="text-sm mt-1">Try "gpt", "claude", or "llama"</p>
-                        </div>
-                    </div>
-                `;
-                modelCount.textContent = availableModels.length;
-                return;
-            }
-            
             let filteredModels = [];
             
-            availableModels.forEach(model => {
-                const matchesSearch = 
-                    model.name.toLowerCase().includes(searchTerm) ||
-                    model.provider.toLowerCase().includes(searchTerm) ||
-                    model.id.toLowerCase().includes(searchTerm);
-                
-                if (matchesSearch) {
-                    filteredModels.push(model);
-                }
-            });
+            if (!searchTerm) {
+                // If no search term, show all models
+                filteredModels = [...availableModels];
+            } else {
+                // Filter models based on search term
+                availableModels.forEach(model => {
+                    // Split search term by spaces for multi-word matching
+                    const searchParts = searchTerm.split(/\s+/).filter(part => part.length > 0);
+                    
+                    // Combine all searchable fields into one string
+                    const searchableText = `${model.name} ${model.provider} ${model.id}`.toLowerCase();
+                    
+                    // Check if all search parts are found in the searchable text
+                    const matchesSearch = searchParts.every(part => searchableText.includes(part));
+                    
+                    if (matchesSearch) {
+                        filteredModels.push(model);
+                    }
+                });
+            }
             
             // Update count
             modelCount.textContent = `${filteredModels.length} of ${availableModels.length}`;
@@ -523,10 +522,10 @@
                             model.id === selectedModel ? 'ring-2 ring-blue-500' : ''
                         }`;
                         
-                        // Model name
+                        // Model name (show full ID)
                         const modelName = document.createElement('div');
                         modelName.className = 'text-sm text-white flex-1';
-                        modelName.textContent = model.name;
+                        modelName.textContent = model.id;
                         
                         // Pricing
                         const pricingDiv = document.createElement('div');
@@ -598,7 +597,7 @@
                     currentModel = selectedModel;
                     const model = availableModels.find(m => m.id === currentModel);
                     if (model) {
-                        currentModelName.textContent = model.name;
+                        currentModelName.textContent = model.id;
                         updatePricingDisplay(model);
                     }
                     
@@ -1013,10 +1012,8 @@
                     selectedModel = currentModel;
                     
                     // Update display immediately with what we have
-                    // Extract the model name from the ID (e.g., "anthropic:claude-3-opus" -> "claude-3-opus")
-                    const modelParts = currentModel.split(':');
-                    const displayName = modelParts.length > 1 ? modelParts[1] : currentModel;
-                    currentModelName.textContent = displayName;
+                    // Show the full model ID
+                    currentModelName.textContent = currentModel;
                     
                     // Enable the input since we have a model
                     updateInputState();
@@ -1055,8 +1052,8 @@
                 const response = await fetch(`${API_BASE}/model`);
                 const data = await response.json();
                 currentModel = data.model;
-                // Show the model ID as the name initially
-                currentModelName.textContent = currentModel.split(':')[1] || currentModel;
+                // Show the full model ID
+                currentModelName.textContent = currentModel;
             } catch (error) {
                 console.error('Error loading current model:', error);
                 currentModelName.textContent = 'Unknown';
@@ -1094,8 +1091,7 @@
             // Load history first to see if there's a model from the conversation
             await loadHistory();
             
-            // Then load models (which will use the model from history if set)
-            await loadModels();
+            // Don't load models until modal is opened
             
             input.focus();
         }
