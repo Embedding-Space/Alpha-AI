@@ -16,7 +16,7 @@ Alpha AI is a provider-agnostic AI agent server that creates Alpha-architecture 
 
 2. **Agent Manager** (`src/alpha_ai/agent.py`)
    - PydanticAI-based agent management for multiple models
-   - Supports OpenAI, Anthropic, Groq, Gemini, and Ollama providers
+   - Supports OpenAI, Anthropic, Groq, Gemini, OpenRouter, and Ollama providers
    - MCP (Model Context Protocol) server integration
    - Dynamic agent creation and lifecycle management
 
@@ -75,6 +75,7 @@ OPENAI_API_KEY=
 ANTHROPIC_API_KEY=
 GROQ_API_KEY=
 GEMINI_API_KEY=
+OPENROUTER_API_KEY=
 OLLAMA_BASE_URL=http://host.docker.internal:11434/v1
 ```
 
@@ -104,6 +105,7 @@ Models are discovered dynamically from provider APIs (`src/alpha_ai/model_discov
 - OpenAI: `/v1/models` endpoint
 - Groq: `/openai/v1/models` endpoint  
 - Gemini: Google API endpoint
+- OpenRouter: `/api/v1/models` endpoint (includes pricing)
 - Ollama: `/api/tags` endpoint
 - Anthropic: No discovery API (returns empty list)
 
@@ -150,6 +152,6 @@ When working on this codebase, remember you're not just building a chat interfac
 
 ## Pending Features
 
-- OpenRouter integration for additional model access
-- Enhanced model pricing information
+- Enhanced model pricing information display
 - Extended model filtering options
+- Model capabilities metadata

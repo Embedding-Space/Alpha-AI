@@ -12,6 +12,7 @@ from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.models.groq import GroqModel
 from pydantic_ai.models.gemini import GeminiModel
 from pydantic_ai.providers.openai import OpenAIProvider
+from pydantic_ai.providers.openrouter import OpenRouterProvider
 
 from .settings import settings
 from .mcp_config import create_mcp_servers_from_file
@@ -143,6 +144,12 @@ class AlphaAgentManager:
             model = GroqModel(model_name)
         elif provider in ["google-gla", "google-vertex"]:
             model = GeminiModel(model_name, provider=provider)
+        elif provider == "openrouter":
+            # OpenRouter uses OpenAI-compatible interface with custom provider
+            openrouter_provider = OpenRouterProvider(
+                api_key=settings.openrouter_api_key or ""
+            )
+            model = OpenAIModel(model_name, provider=openrouter_provider)
         else:
             raise ValueError(f"Unsupported provider: {provider}")
         

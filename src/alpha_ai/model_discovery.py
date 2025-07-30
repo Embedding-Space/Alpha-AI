@@ -29,6 +29,9 @@ class ModelDiscovery:
         if os.getenv("GEMINI_API_KEY"):
             models.extend(await self.discover_gemini())
         
+        if os.getenv("OPENROUTER_API_KEY"):
+            models.extend(await self.discover_openrouter())
+        
         # Always try Ollama (no API key needed)
         models.extend(await self.discover_ollama())
         
@@ -137,6 +140,44 @@ class ModelDiscovery:
                     ))
         except Exception as e:
             print(f"Failed to discover Ollama models: {e}")
+        
+        return models
+    
+    async def discover_openrouter(self) -> List[AvailableModel]:
+        """Discover OpenRouter models."""
+        models = []
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.get(
+                    "https://openrouter.ai/api/v1/models",
+                    headers={"Authorization": f"Bearer {os.getenv('OPENROUTER_API_KEY')}"}
+                )
+                response.raise_for_status()
+                data = response.json()
+                
+                for model in data.get("data", []):
+                    model_id = model["id"]
+                    # Extract pricing info if available
+                    pricing = model.get("pricing", {})
+                    input_cost = None
+                    output_cost = None
+                    
+                    if pricing:
+                        # OpenRouter pricing is per token, convert to per million
+                        if "prompt" in pricing:
+                            input_cost = float(pricing["prompt"]) * 1_000_000
+                        if "completion" in pricing:
+                            output_cost = float(pricing["completion"]) * 1_000_000
+                    
+                    models.append(AvailableModel(
+                        id=f"openrouter:{model_id}",
+                        name=model_id,
+                        provider="OpenRouter",
+                        input_cost=input_cost,
+                        output_cost=output_cost
+                    ))
+        except Exception as e:
+            print(f"Failed to discover OpenRouter models: {e}")
         
         return models
 
