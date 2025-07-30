@@ -292,11 +292,15 @@
                     selectedModel = currentModel;
                 }
                 
-                // Update current model display
+                // Update current model display only if not already set by loadHistory
                 if (currentModel) {
                     const model = availableModels.find(m => m.id === currentModel);
                     if (model) {
-                        currentModelName.textContent = model.name;
+                        // Only update if it's still showing "Select model..." 
+                        // (i.e., wasn't already set by loadHistory)
+                        if (currentModelName.textContent === 'Select model...') {
+                            currentModelName.textContent = model.name;
+                        }
                         updatePricingDisplay(model);
                     }
                 } else {
@@ -902,10 +906,19 @@
                 const data = await response.json();
                 
                 // If there's a model in the conversation and we don't have one set, use it
-                if (data.model && !currentModel) {
+                // Note: data.model might be empty string if server doesn't track it properly
+                if (data.model && data.model !== '' && !currentModel) {
                     currentModel = data.model;
                     selectedModel = currentModel;
-                    // The display will be updated when loadModels runs
+                    
+                    // Update display immediately with what we have
+                    // Extract the model name from the ID (e.g., "anthropic:claude-3-opus" -> "claude-3-opus")
+                    const modelParts = currentModel.split(':');
+                    const displayName = modelParts.length > 1 ? modelParts[1] : currentModel;
+                    currentModelName.textContent = displayName;
+                    
+                    // Enable the input since we have a model
+                    updateInputState();
                 }
                 
                 data.messages.forEach(msg => {

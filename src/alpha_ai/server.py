@@ -102,6 +102,9 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
     if not agent_manager.get_model():
         raise HTTPException(status_code=400, detail="No model selected")
     
+    # Set the model in the conversation manager
+    conversation_manager.set_model(agent_manager.get_model())
+    
     # Add user message event
     conversation_manager.add_user_message(db, request.message)
     
@@ -189,6 +192,9 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
     # Check if a model is selected
     if not agent_manager.get_model():
         raise HTTPException(status_code=400, detail="No model selected")
+    
+    # Set the model in the conversation manager
+    conversation_manager.set_model(agent_manager.get_model())
     
     # Add user message to database
     conversation_manager.add_user_message(db, request.message)
@@ -345,14 +351,14 @@ async def new_conversation(request: Dict[str, str], db: Session = Depends(get_db
     if not model:
         raise HTTPException(status_code=400, detail="Model is required")
     
-    # Clear the current conversation
-    conversation_manager.clear_conversation(db)
-    
-    # Set the new model
+    # Set the new model first
     try:
         await agent_manager.set_model(model)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    
+    # Clear the current conversation and start a new one with the model
+    conversation_manager.clear_conversation(db, model)
     
     return {"status": "new conversation started", "model": model}
 
@@ -443,7 +449,7 @@ async def get_conversation(limit: int = 50, db: Session = Depends(get_db)):
     return ConversationResponse(
         messages=messages,
         total_messages=len(conversation.events),
-        model=agent_manager.get_model()
+        model=conversation.model or ""  # Use the model stored with the conversation
     )
 
 

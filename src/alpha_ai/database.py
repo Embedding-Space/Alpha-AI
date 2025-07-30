@@ -27,6 +27,7 @@ class Conversation(Base):
     __tablename__ = "conversations"
     
     id = Column(Integer, primary_key=True)
+    model = Column(String, nullable=True)  # Model used for this conversation
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
@@ -84,10 +85,11 @@ class ConversationManager:
     def __init__(self):
         self.current_conversation_id: Optional[int] = None
         self.event_position = 0
+        self.current_model: Optional[str] = None  # Track the current model
     
-    def start_new_conversation(self, db: Session) -> int:
+    def start_new_conversation(self, db: Session, model: Optional[str] = None) -> int:
         """Start a new conversation."""
-        conversation = Conversation()
+        conversation = Conversation(model=model)
         db.add(conversation)
         db.commit()
         db.refresh(conversation)
@@ -105,7 +107,8 @@ class ConversationManager:
     ) -> ConversationEvent:
         """Add an event to the current conversation."""
         if self.current_conversation_id is None:
-            self.start_new_conversation(db)
+            # Start a new conversation with the current model
+            self.start_new_conversation(db, self.current_model)
         
         event = ConversationEvent(
             conversation_id=self.current_conversation_id,
@@ -174,14 +177,22 @@ class ConversationManager:
         
         return db.query(Conversation).filter_by(id=self.current_conversation_id).first()
     
-    def clear_conversation(self, db: Session):
+    def set_model(self, model: str):
+        """Set the current model for new conversations."""
+        self.current_model = model
+    
+    def clear_conversation(self, db: Session, model: Optional[str] = None):
         """Clear the current conversation by starting a new one."""
         # Don't delete old conversations - just start fresh
         self.current_conversation_id = None
         self.event_position = 0
         
-        # Start a new conversation
-        self.start_new_conversation(db)
+        # Update the current model if provided
+        if model:
+            self.current_model = model
+        
+        # Start a new conversation with the specified model
+        self.start_new_conversation(db, model)
 
 
 # Global conversation manager
