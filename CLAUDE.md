@@ -13,6 +13,7 @@ Alpha AI is a provider-agnostic AI agent server that creates Alpha-architecture 
    - Server-Sent Events (SSE) streaming for real-time responses
    - Event-based conversation persistence using SQLAlchemy
    - Dynamic model discovery from provider APIs
+   - Model restoration from conversation on server restart/page reload
 
 2. **Agent Manager** (`src/alpha_ai/agent.py`)
    - PydanticAI-based agent management for multiple models
@@ -25,10 +26,17 @@ Alpha AI is a provider-agnostic AI agent server that creates Alpha-architecture 
    - Real-time streaming chat interface
    - Modal-based model selector with search-first UX
    - Dynamic model discovery without page reload
+   - Tool call visualization with request/response display
 
 4. **MCP Bridge** (`src/alpha_ai_mcp/`)
    - stdio bridge for Claude Code/Desktop integration
    - Enables using Alpha AI as an MCP server
+   - Implements `chat` and `conversation` tools for AI-to-AI communication
+
+5. **Database** (`src/alpha_ai/database.py`)
+   - SQLite database at `/data/alpha_ai.db` in container
+   - Event-based storage with conversation and event tables
+   - Tool call arguments stored as JSON in event data field
 
 ## Development Commands
 
@@ -39,6 +47,7 @@ docker compose down      # Stop the stack
 docker compose down -v   # Stop and remove volumes (reset database)
 docker compose logs -f   # View logs
 docker compose restart   # Restart after config changes
+docker compose up -d --build  # Rebuild and restart (after code changes)
 
 # Development without Docker
 uv run alpha-ai         # Run the API server
@@ -47,15 +56,19 @@ uv run alpha-mcp        # Run the MCP bridge
 # Code quality
 uv run ruff check .     # Run linter
 uv run ruff format .    # Format code
+
+# Database backup (preserves AI conversations and state)
+docker cp alpha-ai:/data/alpha_ai.db ./backup_$(date +%Y%m%d_%H%M%S).db
 ```
 
 ## Docker Development Pattern
 
 The project uses Docker for development:
-1. Code changes are reflected immediately (source mounted as volume)
+1. Code changes require rebuild: `docker compose up -d --build`
 2. Web UI available at: http://localhost:8100
 3. Use `host.docker.internal` instead of `localhost` in Docker configs
 4. System prompts directory is mounted read-only at `/app/system_prompts`
+5. Database persists in `alpha-ai-data` volume
 
 ## Configuration
 
@@ -147,6 +160,18 @@ Single-file web UI with:
 - Custom CSS for markdown rendering (CDN Tailwind doesn't include typography plugin)
 - Model display shows full ID (e.g., `ollama:granite3.3:8b`) not just name
 
+## Known Issues and Fixes
+
+### Tool Call Arguments Display
+- **Issue**: Tool call arguments may show as empty `{}` in UI
+- **Root Cause**: PydanticAI sends `part.args` as JSON string, not dict
+- **Fix**: Server parses JSON string before storing in database
+
+### Model Persistence
+- **Issue**: "No model selected" error on page reload
+- **Root Cause**: Agent manager doesn't restore model from conversation
+- **Fix**: Chat endpoints now check conversation model if agent has none
+
 ## Testing and Code Quality
 
 Currently no tests are implemented. For code quality:
@@ -167,8 +192,10 @@ When working on this codebase, remember you're not just building a chat interfac
 
 1. **Model Selection**: The app starts with no model selected. Users must select a model through the UI before chatting.
 
-2. **Database Schema Changes**: No migration system is used. Drop volumes to recreate database when schema changes.
+2. **Database Location**: The actual SQLite database is at `/data/alpha_ai.db` inside the container, not `/data/data.db`.
 
 3. **System Prompts**: Place `.md` files in `system_prompts/` directory. Filenames are shown in dropdown (including .md extension).
 
 4. **Model Display**: The UI shows full model IDs (e.g., `openrouter:anthropic/claude-3-opus`) not just the model name.
+
+5. **Container Rebuilds**: After code changes, rebuild with `docker compose up -d --build` to ensure changes are included.
