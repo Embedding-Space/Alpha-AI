@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     # Database
     database_url: str
     
+    # UI feature flags
+    streaming: bool = True  # Show streaming toggle in UI
+    
     # MCP servers configuration file (Claude Desktop format)
     mcp_config_file: Optional[str] = None
     

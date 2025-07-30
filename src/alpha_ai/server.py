@@ -90,7 +90,8 @@ async def health_check():
     return {
         "status": "healthy",
         "model": agent_manager.get_model(),
-        "mcp_servers": list(agent_manager.mcp_servers.keys())
+        "mcp_servers": list(agent_manager.mcp_servers.keys()),
+        "streaming": settings.streaming
     }
 
 

@@ -4,467 +4,159 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Alpha AI</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
     <!-- Markdown and syntax highlighting -->
     <script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github-dark.min.css">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: #212121;
-            color: #e0e0e0;
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-        }
-        
-        #header {
-            padding: 12px 16px;
-            background: #2a2a2a;
-            border-bottom: 1px solid #3a3a3a;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-        
-        #model-select {
-            background: #1a1a1a;
-            color: #e0e0e0;
-            border: 1px solid #3a3a3a;
-            padding: 6px 12px;
-            border-radius: 6px;
-            font-size: 14px;
-            outline: none;
-            cursor: pointer;
-            min-width: 200px;
-        }
-        
-        #model-select:focus {
-            border-color: #4a4a4a;
-        }
-        
-        #model-select option {
-            background: #1a1a1a;
-            color: #e0e0e0;
-        }
-        
-        #new-chat-button {
-            background: #0084ff;
-            color: white;
-            border: none;
-            padding: 6px 16px;
-            border-radius: 6px;
-            font-size: 14px;
-            cursor: pointer;
-            transition: all 0.2s;
-            font-weight: 500;
-        }
-        
-        #new-chat-button:hover {
-            background: #0073e6;
-        }
-        
-        #new-chat-button:disabled {
-            background: #4a4a4a;
-            cursor: not-allowed;
-        }
-        
-        #messages {
-            flex: 1;
-            overflow-y: auto;
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-        }
-        
-        .message {
-            max-width: 70%;
-            padding: 12px 16px;
-            border-radius: 18px;
-            word-wrap: break-word;
-        }
-        
-        .message.user {
-            align-self: flex-end;
-            background: #0084ff;
-            color: white;
-            border-bottom-right-radius: 4px;
-        }
-        
-        .message.assistant {
-            align-self: flex-start;
-            background: #383838;
-            color: #e0e0e0;
-            border-bottom-left-radius: 4px;
-        }
-        
-        /* Markdown content styling */
-        .message h1, .message h2, .message h3, .message h4, .message h5, .message h6 {
-            margin: 0.5em 0;
-        }
-        
-        .message h1 { font-size: 1.5em; }
-        .message h2 { font-size: 1.3em; }
-        .message h3 { font-size: 1.1em; }
-        
-        .message p {
-            margin: 0 0 0.5em 0;
-        }
-        
-        /* Remove margin between consecutive paragraphs */
-        .message p + p {
-            margin-top: 0.5em;
-        }
-        
-        /* Remove top margin from first element */
-        .message > *:first-child {
-            margin-top: 0;
-        }
-        
-        /* Remove bottom margin from last element */
-        .message > *:last-child {
-            margin-bottom: 0;
-        }
-        
-        .message code {
-            background: rgba(255, 255, 255, 0.1);
-            padding: 0.2em 0.4em;
-            border-radius: 3px;
-            font-size: 0.9em;
-            font-family: 'Consolas', 'Monaco', monospace;
-        }
-        
-        .message pre {
-            background: #1a1a1a;
-            padding: 1em;
-            border-radius: 6px;
-            overflow-x: auto;
-            margin: 0.5em 0;
-        }
-        
-        .message pre code {
-            background: none;
-            padding: 0;
-            font-size: 0.9em;
-        }
-        
-        .message ul, .message ol {
-            margin: 0.5em 0;
-            padding-left: 1.5em;
-        }
-        
-        .message li {
-            margin: 0.25em 0;
-        }
-        
-        .message blockquote {
-            border-left: 3px solid #4a4a4a;
-            padding-left: 1em;
-            margin: 0.5em 0;
-            color: #aaa;
-        }
-        
-        .message a {
-            color: #58a6ff;
-            text-decoration: none;
-        }
-        
-        .message a:hover {
-            text-decoration: underline;
-        }
-        
-        .message table {
-            border-collapse: collapse;
-            margin: 0.5em 0;
-        }
-        
-        .message th, .message td {
-            border: 1px solid #4a4a4a;
-            padding: 0.5em;
-        }
-        
-        .message th {
-            background: rgba(255, 255, 255, 0.05);
-        }
-        
-        .message.system {
-            align-self: center;
-            background: transparent;
-            color: #888;
-            font-size: 14px;
-            text-align: center;
-            padding: 8px 16px;
-        }
-        
-        /* Tool call styles */
-        .tool-calls {
-            max-width: 70%;
-            align-self: flex-start;
-            margin: 8px 0;
-        }
-        
-        .tool-call {
-            background: #2a2a2a;
-            border: 1px solid #3a3a3a;
-            border-radius: 8px;
-            margin-bottom: 8px;
-            overflow: hidden;
-        }
-        
-        .tool-call-header {
-            padding: 8px 12px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            user-select: none;
-            font-size: 14px;
-            color: #aaa;
-        }
-        
-        .tool-call-header:hover {
-            background: #333;
-        }
-        
-        .tool-call-arrow {
-            font-size: 12px;
-            transition: transform 0.2s;
-        }
-        
-        .tool-call-arrow.expanded {
-            transform: rotate(90deg);
-        }
-        
-        .tool-call-content {
-            max-height: 0;
-            overflow: hidden;
-            transition: max-height 0.3s ease-out;
-        }
-        
-        .tool-call-content.expanded {
-            max-height: 500px;
-            overflow-y: auto;
-        }
-        
-        .tool-call-section {
-            padding: 12px;
-            border-top: 1px solid #3a3a3a;
-        }
-        
-        .tool-call-section h4 {
-            margin: 0 0 8px 0;
-            font-size: 12px;
-            text-transform: uppercase;
-            color: #888;
-            font-weight: normal;
-        }
-        
-        .tool-call-json {
-            background: #1a1a1a;
-            padding: 8px;
-            border-radius: 4px;
-            font-family: monospace;
-            font-size: 12px;
-            white-space: pre-wrap;
-            overflow-x: auto;
-            color: #e0e0e0;
-        }
-        
-        /* JSON syntax highlighting */
-        .tool-call-json .json-key {
-            color: #7ec699;
-        }
-        
-        .tool-call-json .json-string {
-            color: #e6c07b;
-        }
-        
-        .tool-call-json .json-number {
-            color: #d19a66;
-        }
-        
-        .tool-call-json .json-boolean {
-            color: #56b6c2;
-        }
-        
-        .tool-call-json .json-null {
-            color: #abb2bf;
-        }
-        
-        #input-container {
-            padding: 16px;
-            background: #2a2a2a;
-            border-top: 1px solid #3a3a3a;
-            display: flex;
-            gap: 12px;
-            align-items: flex-end;
-        }
-        
-        #input {
-            flex: 1;
-            background: #1a1a1a;
-            border: 1px solid #3a3a3a;
-            color: #e0e0e0;
-            padding: 12px 16px;
-            border-radius: 24px;
-            font-size: 16px;
-            resize: none;
-            outline: none;
-            min-height: 24px;
-            max-height: 120px;
-            line-height: 24px;
-            font-family: inherit;
-        }
-        
-        #input:focus {
-            border-color: #4a4a4a;
-        }
-        
-        #input::placeholder {
-            color: #666;
-        }
-        
-        #input:disabled {
-            opacity: 0.7;
-            cursor: not-allowed;
-        }
-        
-        #send-button {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            border: none;
-            background: #0084ff;
-            color: white;
-            font-size: 20px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s;
-            flex-shrink: 0;
-        }
-        
-        #send-button:hover:not(:disabled) {
-            background: #0073e6;
-            transform: scale(1.05);
-        }
-        
-        #send-button:disabled {
-            background: #4a4a4a;
-            cursor: not-allowed;
-        }
-        
-        #send-button.stop {
-            background: #ff3b30;
-        }
-        
-        #send-button.stop:hover {
-            background: #e60000;
-        }
-        
+        /* Custom styles for markdown content */
+        .markdown-content h1 { font-size: 1.5rem; line-height: 2rem; font-weight: 700; margin-top: 1rem; margin-bottom: 0.5rem; }
+        .markdown-content h2 { font-size: 1.25rem; line-height: 1.75rem; font-weight: 700; margin-top: 0.75rem; margin-bottom: 0.5rem; }
+        .markdown-content h3 { font-size: 1.125rem; line-height: 1.75rem; font-weight: 600; margin-top: 0.5rem; margin-bottom: 0.25rem; }
+        .markdown-content p { margin-bottom: 1rem; }
+        .markdown-content p:last-child { margin-bottom: 0; }
+        .markdown-content ul { list-style-type: disc; list-style-position: inside; margin-bottom: 1rem; }
+        .markdown-content ol { list-style-type: decimal; list-style-position: inside; margin-bottom: 1rem; }
+        .markdown-content li { margin-bottom: 0.25rem; }
+        .markdown-content li > p { display: inline; margin-bottom: 0; }
+        .markdown-content li > p:first-child { display: inline; }
+        .markdown-content code { background-color: rgb(55 65 81); padding: 0.125rem 0.25rem; border-radius: 0.25rem; font-size: 0.875rem; }
+        .markdown-content pre { background-color: rgb(31 41 55); padding: 0.75rem; border-radius: 0.5rem; overflow-x: auto; margin-top: 0.5rem; margin-bottom: 0.5rem; }
+        .markdown-content pre code { background-color: transparent; padding: 0; }
+        .markdown-content blockquote { border-left-width: 4px; border-left-color: rgb(75 85 99); padding-left: 1rem; font-style: italic; color: rgb(156 163 175); }
+        .markdown-content a { color: rgb(96 165 250); text-decoration: none; }
+        .markdown-content a:hover { text-decoration: underline; }
+        .markdown-content table { border-collapse: collapse; margin-top: 0.5rem; margin-bottom: 0.5rem; }
+        .markdown-content th, .markdown-content td { border: 1px solid rgb(75 85 99); padding: 0.25rem 0.75rem; }
+        .markdown-content th { background-color: rgb(55 65 81); }
+
         /* Scrollbar styling */
-        ::-webkit-scrollbar {
-            width: 8px;
-        }
-        
-        ::-webkit-scrollbar-track {
-            background: #1a1a1a;
-        }
-        
-        ::-webkit-scrollbar-thumb {
-            background: #4a4a4a;
-            border-radius: 4px;
-        }
-        
-        ::-webkit-scrollbar-thumb:hover {
-            background: #5a5a5a;
-        }
-        
-        /* Typing indicator */
-        .typing-indicator {
-            align-self: flex-start;
-            padding: 12px 16px;
-            background: #383838;
-            border-radius: 18px;
-            border-bottom-left-radius: 4px;
-            display: flex;
-            gap: 4px;
-            align-items: center;
-        }
-        
-        .typing-indicator span {
-            width: 8px;
-            height: 8px;
-            background: #666;
-            border-radius: 50%;
-            animation: pulse 1.4s infinite;
-        }
-        
-        .typing-indicator span:nth-child(2) {
-            animation-delay: 0.2s;
-        }
-        
-        .typing-indicator span:nth-child(3) {
-            animation-delay: 0.4s;
-        }
-        
+        ::-webkit-scrollbar { width: 0.5rem; }
+        ::-webkit-scrollbar-track { background: rgb(31 41 55); }
+        ::-webkit-scrollbar-thumb { background: rgb(75 85 99); border-radius: 0.25rem; }
+        ::-webkit-scrollbar-thumb:hover { background: rgb(107 114 128); }
+
+        /* Custom animation for typing indicator */
         @keyframes pulse {
-            0%, 60%, 100% {
-                opacity: 0.3;
-                transform: scale(0.8);
-            }
-            30% {
-                opacity: 1;
-                transform: scale(1);
-            }
+            0%, 60%, 100% { opacity: 0.3; transform: scale(0.8); }
+            30% { opacity: 1; transform: scale(1); }
+        }
+        .typing-dot { animation: pulse 1.4s infinite; }
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+        /* Stop button styling */
+        #send-button.stop {
+            background-color: rgb(239 68 68) !important;
+        }
+        #send-button.stop:hover {
+            background-color: rgb(220 38 38) !important;
         }
     </style>
 </head>
-<body>
-    <div id="header">
-        <span style="font-weight: 600; font-size: 16px;">Alpha AI</span>
-        <span style="color: #888; font-size: 14px;">Model:</span>
-        <select id="model-select">
-            <option value="">Loading models...</option>
-        </select>
-        <button id="new-chat-button">New Chat</button>
-        <label style="margin-left: auto; display: flex; align-items: center; gap: 8px; color: #e0e0e0; font-size: 14px;">
-            <input type="checkbox" id="streaming-toggle" checked>
-            Streaming
-        </label>
+<body class="bg-gray-900 text-gray-100 flex flex-col h-screen">
+    <!-- Header -->
+    <div class="px-4 py-3 bg-gray-800 border-b border-gray-700 flex items-center gap-3">
+        <span class="font-semibold text-lg">Alpha AI</span>
+        
+        <!-- Model Selector Button -->
+        <button id="model-selector-btn" class="flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/>
+            </svg>
+            <span id="current-model-name" class="text-sm">Loading...</span>
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+        </button>
+
     </div>
     
-    <div id="messages"></div>
+    <!-- Messages Container -->
+    <div id="messages" class="flex-1 overflow-y-auto p-5 space-y-4"></div>
     
-    <div id="input-container">
-        <textarea id="input" placeholder="Message Alpha..." rows="1"></textarea>
-        <button id="send-button" title="Send message">↑</button>
+    <!-- Input Container -->
+    <div class="p-4 bg-gray-800 border-t border-gray-700 flex gap-3 items-end">
+        <textarea id="input" placeholder="Message Alpha..." rows="1" 
+            class="flex-1 bg-gray-700 border border-gray-600 rounded-3xl px-5 py-3 text-base resize-none outline-none focus:border-gray-500 placeholder-gray-400 min-h-[48px] max-h-32"></textarea>
+        <button id="send-button" title="Send message" 
+            class="w-12 h-12 rounded-full bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center transition-all hover:scale-105 disabled:bg-gray-600 disabled:cursor-not-allowed">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"/>
+            </svg>
+        </button>
+    </div>
+
+    <!-- Model Selector Modal -->
+    <div id="model-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+        <div class="bg-gray-800 rounded-xl max-w-3xl w-full max-h-[80vh] flex flex-col">
+            <!-- Modal Header -->
+            <div class="p-6 border-b border-gray-700">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-2xl font-semibold">Select Model</h2>
+                    <button id="close-modal" class="text-gray-400 hover:text-gray-200">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </div>
+                
+                <!-- Search Bar -->
+                <div class="relative">
+                    <input type="text" id="model-search" placeholder="Search models..." 
+                        class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 pl-10 outline-none focus:border-gray-500 placeholder-gray-400">
+                    <svg class="absolute left-3 top-3.5 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                    </svg>
+                </div>
+            </div>
+
+            <!-- Model List -->
+            <div id="model-list" class="flex-1 overflow-y-auto p-6 space-y-4">
+                <!-- Models will be dynamically inserted here -->
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="p-6 border-t border-gray-700 flex justify-between items-center">
+                <div class="text-sm text-gray-400">
+                    <span id="model-count">0</span> models available
+                </div>
+                <button id="start-new-chat" 
+                    class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed">
+                    Start New Chat
+                </button>
+            </div>
+        </div>
     </div>
     
     <script>
         const API_BASE = '/api/v1';
         const messagesDiv = document.getElementById('messages');
         const input = document.getElementById('input');
-        const modelSelect = document.getElementById('model-select');
-        const newChatButton = document.getElementById('new-chat-button');
-        const streamingToggle = document.getElementById('streaming-toggle');
         const sendButton = document.getElementById('send-button');
-        let typingIndicator = null;
-        let useStreaming = true; // Default to streaming mode
-        let currentReader = null; // Track current stream reader for aborting
+        const modelSelectorBtn = document.getElementById('model-selector-btn');
+        const currentModelName = document.getElementById('current-model-name');
+        const modelModal = document.getElementById('model-modal');
+        const closeModalBtn = document.getElementById('close-modal');
+        const modelSearch = document.getElementById('model-search');
+        const modelList = document.getElementById('model-list');
+        const modelCount = document.getElementById('model-count');
+        const startNewChatBtn = document.getElementById('start-new-chat');
         
-        // Configure marked for GitHub-flavored Markdown
+        let typingIndicator = null;
+        let typingIndicatorTimeout = null;
+        let useStreaming = true;  // Will be set based on server config
+        let currentReader = null;
+        let availableModels = [];
+        let currentModel = null;
+        let selectedModel = null;
+        
+        // Configure marked
         marked.setOptions({
             gfm: true,
-            breaks: false,  // Don't convert single line breaks to <br>
+            breaks: false,
             highlight: function(code, lang) {
                 if (lang && hljs.getLanguage(lang)) {
                     try {
@@ -477,40 +169,175 @@
             }
         });
         
-        // Render markdown to HTML
+        // Render markdown
         function renderMarkdown(text) {
-            // Normalize excessive newlines while preserving intentional paragraph breaks
             const normalized = text
-                .replace(/\n\s*\n\s*\n+/g, '\n\n')  // Replace 3+ newlines with exactly 2
-                .replace(/\n\n+/g, '\n\n')           // Ensure max 2 consecutive newlines
-                .trim();                             // Remove leading/trailing whitespace
+                .replace(/\n\s*\n\s*\n+/g, '\n\n')
+                .replace(/\n\n+/g, '\n\n')
+                .trim();
             
-            // Parse markdown
             const html = marked.parse(normalized);
-            
-            // Remove trailing empty paragraphs
             return html.replace(/<p>\s*<\/p>\s*$/g, '').trim();
         }
         
-        // Syntax highlight JSON
-        function highlightJSON(json) {
-            // Format JSON with proper indentation
-            const formatted = JSON.stringify(json, null, 2);
-            
-            // Apply syntax highlighting
-            return formatted
-                .replace(/("(\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?)/g, function (match, p1, p2, p3) {
-                    const cls = p3 ? 'json-key' : 'json-string';
-                    return '<span class="' + cls + '">' + match + '</span>';
-                })
-                .replace(/\b(true|false)\b/g, '<span class="json-boolean">$1</span>')
-                .replace(/\bnull\b/g, '<span class="json-null">null</span>')
-                .replace(/\b(-?\d+(\.\d+)?([eE][+-]?\d+)?)\b/g, '<span class="json-number">$1</span>');
+        // Modal handling
+        modelSelectorBtn.addEventListener('click', () => {
+            selectedModel = currentModel;
+            renderModelList();
+            modelModal.classList.remove('hidden');
+            modelSearch.focus();
+        });
+        
+        closeModalBtn.addEventListener('click', () => {
+            modelModal.classList.add('hidden');
+        });
+        
+        modelModal.addEventListener('click', (e) => {
+            if (e.target === modelModal) {
+                modelModal.classList.add('hidden');
+            }
+        });
+        
+        // Model search
+        modelSearch.addEventListener('input', (e) => {
+            renderModelList(e.target.value.toLowerCase());
+        });
+        
+        // Load models
+        async function loadModels() {
+            try {
+                const response = await fetch(`${API_BASE}/models`);
+                const data = await response.json();
+                
+                availableModels = data.models;
+                currentModel = data.current;
+                selectedModel = currentModel;
+                
+                // Update current model display
+                const model = availableModels.find(m => m.id === currentModel);
+                if (model) {
+                    currentModelName.textContent = model.name;
+                }
+                
+                modelCount.textContent = availableModels.length;
+            } catch (error) {
+                console.error('Error loading models:', error);
+                currentModelName.textContent = 'Error loading models';
+            }
         }
         
-        // Handle streaming toggle
-        streamingToggle.addEventListener('change', (e) => {
-            useStreaming = e.target.checked;
+        // Render model list
+        function renderModelList(searchTerm = '') {
+            // Group models by provider
+            const modelsByProvider = {};
+            let filteredCount = 0;
+            
+            availableModels.forEach(model => {
+                const matchesSearch = !searchTerm || 
+                    model.name.toLowerCase().includes(searchTerm) ||
+                    model.provider.toLowerCase().includes(searchTerm) ||
+                    model.id.toLowerCase().includes(searchTerm);
+                
+                if (matchesSearch) {
+                    if (!modelsByProvider[model.provider]) {
+                        modelsByProvider[model.provider] = [];
+                    }
+                    modelsByProvider[model.provider].push(model);
+                    filteredCount++;
+                }
+            });
+            
+            // Update count
+            modelCount.textContent = searchTerm ? 
+                `${filteredCount} of ${availableModels.length}` : 
+                availableModels.length;
+            
+            // Clear and render
+            modelList.innerHTML = '';
+            
+            Object.keys(modelsByProvider).sort().forEach(provider => {
+                const providerDiv = document.createElement('div');
+                providerDiv.className = 'mb-4';
+                
+                const providerHeader = document.createElement('h3');
+                providerHeader.className = 'text-sm font-semibold text-gray-400 mb-2';
+                providerHeader.textContent = provider;
+                providerDiv.appendChild(providerHeader);
+                
+                const modelsGrid = document.createElement('div');
+                modelsGrid.className = 'grid gap-2';
+                
+                modelsByProvider[provider].forEach(model => {
+                    const modelCard = document.createElement('button');
+                    modelCard.className = `p-4 rounded-lg border transition-all text-left w-full ${
+                        model.id === selectedModel ? 
+                        'bg-blue-600 bg-opacity-20 border-blue-600 text-blue-400' : 
+                        'bg-gray-700 border-gray-600 hover:bg-gray-600 hover:border-gray-500'
+                    }`;
+                    
+                    modelCard.innerHTML = `
+                        <div class="font-medium ${model.id === currentModel ? 'flex items-center gap-2' : ''}">
+                            ${model.name}
+                            ${model.id === currentModel ? '<span class="text-xs bg-gray-600 px-2 py-1 rounded">Current</span>' : ''}
+                        </div>
+                        <div class="text-xs text-gray-400 mt-1">${model.id}</div>
+                    `;
+                    
+                    modelCard.addEventListener('click', () => {
+                        selectedModel = model.id;
+                        renderModelList(searchTerm);
+                    });
+                    
+                    modelsGrid.appendChild(modelCard);
+                });
+                
+                providerDiv.appendChild(modelsGrid);
+                modelList.appendChild(providerDiv);
+            });
+            
+            // Update start button state and text
+            startNewChatBtn.disabled = !selectedModel;
+            if (selectedModel === currentModel) {
+                startNewChatBtn.textContent = 'Clear Chat & Continue';
+            } else {
+                startNewChatBtn.textContent = 'Start New Chat';
+            }
+        }
+        
+        // Start new chat
+        startNewChatBtn.addEventListener('click', async () => {
+            if (!selectedModel) return;
+            
+            try {
+                startNewChatBtn.disabled = true;
+                const originalText = startNewChatBtn.textContent;
+                startNewChatBtn.textContent = selectedModel === currentModel ? 'Clearing...' : 'Starting...';
+                
+                const response = await fetch(`${API_BASE}/conversation/new`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model: selectedModel })
+                });
+                
+                if (response.ok) {
+                    messagesDiv.innerHTML = '';
+                    currentModel = selectedModel;
+                    const model = availableModels.find(m => m.id === currentModel);
+                    if (model) {
+                        currentModelName.textContent = model.name;
+                    }
+                    modelModal.classList.add('hidden');
+                    input.focus();
+                } else {
+                    const error = await response.json();
+                    alert(`Error: ${error.detail || 'Failed to start new conversation'}`);
+                }
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+            } finally {
+                startNewChatBtn.disabled = false;
+                startNewChatBtn.textContent = selectedModel === currentModel ? 'Clear Chat & Continue' : 'Start New Chat';
+            }
         });
         
         // Auto-resize textarea
@@ -538,99 +365,27 @@
             }
         });
         
-        // Load available models
-        async function loadModels() {
-            try {
-                const response = await fetch(`${API_BASE}/models`);
-                const data = await response.json();
-                
-                // Clear existing options
-                modelSelect.innerHTML = '';
-                
-                // Group models by provider
-                const modelsByProvider = {};
-                data.models.forEach(model => {
-                    if (!modelsByProvider[model.provider]) {
-                        modelsByProvider[model.provider] = [];
-                    }
-                    modelsByProvider[model.provider].push(model);
-                });
-                
-                // Add options grouped by provider
-                Object.keys(modelsByProvider).sort().forEach(provider => {
-                    const optgroup = document.createElement('optgroup');
-                    optgroup.label = provider;
-                    
-                    modelsByProvider[provider].forEach(model => {
-                        const option = document.createElement('option');
-                        option.value = model.id;
-                        option.textContent = model.name;
-                        if (model.id === data.current) {
-                            option.selected = true;
-                        }
-                        optgroup.appendChild(option);
-                    });
-                    
-                    modelSelect.appendChild(optgroup);
-                });
-            } catch (error) {
-                console.error('Error loading models:', error);
-                modelSelect.innerHTML = '<option value="">Error loading models</option>';
-            }
-        }
-        
-        // Handle new chat button
-        newChatButton.addEventListener('click', async () => {
-            const selectedModel = modelSelect.value;
-            if (!selectedModel) {
-                alert('Please select a model first');
-                return;
-            }
-            
-            if (!confirm(`Start a new chat with ${modelSelect.options[modelSelect.selectedIndex].text}? This will clear the current conversation.`)) {
-                return;
-            }
-            
-            try {
-                newChatButton.disabled = true;
-                const response = await fetch(`${API_BASE}/conversation/new`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ model: selectedModel })
-                });
-                
-                if (response.ok) {
-                    // Clear the messages
-                    messagesDiv.innerHTML = '';
-                    input.focus();
-                } else {
-                    const error = await response.json();
-                    alert(`Error: ${error.detail || 'Failed to start new conversation'}`);
-                }
-            } catch (error) {
-                alert(`Error: ${error.message}`);
-            } finally {
-                newChatButton.disabled = false;
-            }
-        });
-        
-        
         // Add message to UI
         function addMessage(role, content, toolCalls = null) {
-            // Remove typing indicator if present
+            // Clear typing indicator timeout if pending
+            if (typingIndicatorTimeout) {
+                clearTimeout(typingIndicatorTimeout);
+                typingIndicatorTimeout = null;
+            }
+            
             if (typingIndicator) {
                 typingIndicator.remove();
                 typingIndicator = null;
             }
             
-            // Add tool calls BEFORE the assistant message if this is an assistant message with tools
+            // Add tool calls if present
             if (role === 'assistant' && toolCalls && toolCalls.length > 0) {
                 const toolCallsDiv = document.createElement('div');
-                toolCallsDiv.className = 'tool-calls';
+                toolCallsDiv.className = 'max-w-4xl mx-auto';
                 
-                toolCalls.forEach((toolCallPair, index) => {
+                toolCalls.forEach((toolCallPair) => {
                     const [call, result] = toolCallPair;
-                    const toolDiv = createToolCallElement(call, result, index);
+                    const toolDiv = createToolCallElement(call, result);
                     toolCallsDiv.appendChild(toolDiv);
                 });
                 
@@ -638,70 +393,88 @@
             }
             
             const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${role}`;
+            messageDiv.className = `max-w-4xl mx-auto ${role === 'user' ? 'flex justify-end' : ''}`;
             
-            // Render markdown for assistant messages, plain text for others
+            const bubble = document.createElement('div');
+            bubble.className = `inline-block max-w-[70%] px-4 py-3 rounded-2xl ${
+                role === 'user' ? 'bg-blue-600 text-white' : 
+                role === 'assistant' ? 'bg-gray-700' : 
+                'mx-auto text-center text-gray-400 text-sm'
+            }`;
+            
             if (role === 'assistant') {
-                messageDiv.innerHTML = renderMarkdown(content);
+                bubble.innerHTML = `<div class="markdown-content">${renderMarkdown(content)}</div>`;
             } else {
-                messageDiv.textContent = content;
+                bubble.textContent = content;
             }
             
+            messageDiv.appendChild(bubble);
             messagesDiv.appendChild(messageDiv);
-            
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
         
-        // Create collapsible tool call element
-        function createToolCallElement(call, result, index) {
-            const toolDiv = document.createElement('div');
-            toolDiv.className = 'tool-call';
+        // Create tool call element
+        function createToolCallElement(call, result) {
+            const toolDiv = document.createElement('details');
+            toolDiv.className = 'mb-2 bg-gray-800 border border-gray-700 rounded-lg overflow-hidden';
             
-            // Header
-            const header = document.createElement('div');
-            header.className = 'tool-call-header';
-            header.innerHTML = `
-                <span class="tool-call-arrow">▶</span>
-                <span>${call.tool_name}</span>
+            const summary = document.createElement('summary');
+            summary.className = 'px-4 py-3 cursor-pointer hover:bg-gray-700 transition-colors flex items-center gap-2 text-sm text-gray-400';
+            summary.innerHTML = `
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
+                </svg>
+                ${call.tool_name}
             `;
             
-            // Content
             const content = document.createElement('div');
-            content.className = 'tool-call-content';
-            const responseContent = result ? highlightJSON({ content: result.content }) : 'Waiting for response...';
+            content.className = 'px-4 py-3 border-t border-gray-700 space-y-3';
             content.innerHTML = `
-                <div class="tool-call-section">
-                    <h4>Request</h4>
-                    <div class="tool-call-json">${highlightJSON({ tool_name: call.tool_name, args: call.args })}</div>
+                <div>
+                    <h4 class="text-xs uppercase text-gray-500 mb-1">Request</h4>
+                    <pre class="bg-gray-900 p-3 rounded text-xs overflow-x-auto"><code>${JSON.stringify(call.args, null, 2)}</code></pre>
                 </div>
-                <div class="tool-call-section">
-                    <h4>Response</h4>
-                    <div class="tool-call-json">${responseContent}</div>
+                ${result ? `
+                <div>
+                    <h4 class="text-xs uppercase text-gray-500 mb-1">Response</h4>
+                    <pre class="bg-gray-900 p-3 rounded text-xs overflow-x-auto"><code>${JSON.stringify({ content: result.content }, null, 2)}</code></pre>
                 </div>
+                ` : '<div class="text-sm text-gray-500">Waiting for response...</div>'}
             `;
             
-            // Toggle functionality
-            header.addEventListener('click', () => {
-                const arrow = header.querySelector('.tool-call-arrow');
-                arrow.classList.toggle('expanded');
-                content.classList.toggle('expanded');
-            });
-            
-            toolDiv.appendChild(header);
+            toolDiv.appendChild(summary);
             toolDiv.appendChild(content);
-            
             return toolDiv;
         }
         
-        // Show typing indicator
+        // Show typing indicator with delay to prevent flash
         function showTypingIndicator() {
             if (typingIndicator) return;
             
-            typingIndicator = document.createElement('div');
-            typingIndicator.className = 'typing-indicator';
-            typingIndicator.innerHTML = '<span></span><span></span><span></span>';
-            messagesDiv.appendChild(typingIndicator);
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            // Clear any existing timeout
+            if (typingIndicatorTimeout) {
+                clearTimeout(typingIndicatorTimeout);
+            }
+            
+            // Only show typing indicator after a short delay
+            // This prevents the flash for very fast responses
+            typingIndicatorTimeout = setTimeout(() => {
+                if (!typingIndicator) {
+                    typingIndicator = document.createElement('div');
+                    typingIndicator.className = 'max-w-4xl mx-auto';
+                    typingIndicator.innerHTML = `
+                        <div class="inline-block bg-gray-700 px-4 py-3 rounded-2xl">
+                            <div class="flex gap-1">
+                                <span class="w-2 h-2 bg-gray-500 rounded-full typing-dot"></span>
+                                <span class="w-2 h-2 bg-gray-500 rounded-full typing-dot"></span>
+                                <span class="w-2 h-2 bg-gray-500 rounded-full typing-dot"></span>
+                            </div>
+                        </div>
+                    `;
+                    messagesDiv.appendChild(typingIndicator);
+                    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                }
+            }, 200); // 200ms delay before showing indicator
         }
         
         // Stop generation
@@ -711,39 +484,41 @@
                 currentReader = null;
             }
             
-            // Reset button state
             sendButton.classList.remove('stop');
-            sendButton.innerHTML = '↑';
+            sendButton.innerHTML = `
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"/>
+                </svg>
+            `;
             sendButton.title = 'Send message';
             sendButton.disabled = false;
             
-            // Remove typing indicator
+            // Clear typing indicator and timeout
+            if (typingIndicatorTimeout) {
+                clearTimeout(typingIndicatorTimeout);
+                typingIndicatorTimeout = null;
+            }
+            
             if (typingIndicator) {
                 typingIndicator.remove();
                 typingIndicator = null;
             }
             
-            // Add system message
             addMessage('system', 'Generation stopped by user');
         }
         
-        // Send message with streaming support
+        // Send message
         async function sendMessage() {
             const message = input.value.trim();
             if (!message) return;
             
-            // Disable input and update button
             input.disabled = true;
             sendButton.disabled = true;
             
-            // Clear and reset input
             input.value = '';
             input.style.height = 'auto';
             
-            // Add user message
             addMessage('user', message);
-            
-            // Show typing indicator
             showTypingIndicator();
             
             if (useStreaming) {
@@ -752,12 +527,11 @@
                 await sendMessageNonStreaming(message);
             }
             
-            // Re-enable input
             input.disabled = false;
             input.focus();
         }
         
-        // Non-streaming message send (original method)
+        // Non-streaming send
         async function sendMessageNonStreaming(message) {
             try {
                 const response = await fetch(`${API_BASE}/chat`, {
@@ -770,27 +544,26 @@
                 
                 if (response.ok) {
                     addMessage('assistant', data.response, data.tool_calls);
-                    // Update model if changed
-                    // Model is fixed at startup, no need to update
                 } else {
                     addMessage('system', `Error: ${data.detail || 'Unknown error'}`);
                 }
             } catch (error) {
                 addMessage('system', `Error: ${error.message}`);
             } finally {
-                // Reset button state
                 sendButton.disabled = false;
-                sendButton.innerHTML = '↑';
-                sendButton.title = 'Send message';
             }
         }
         
-        // Streaming message send using SSE
+        // Streaming send
         async function sendMessageStreaming(message) {
             try {
-                // Update button to stop mode
                 sendButton.classList.add('stop');
-                sendButton.innerHTML = '⏹';
+                sendButton.innerHTML = `
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"/>
+                    </svg>
+                `;
                 sendButton.title = 'Stop generation';
                 sendButton.disabled = false;
                 
@@ -806,25 +579,24 @@
                     return;
                 }
                 
-                // Remove typing indicator
+                // Clear typing indicator and timeout
+                if (typingIndicatorTimeout) {
+                    clearTimeout(typingIndicatorTimeout);
+                    typingIndicatorTimeout = null;
+                }
+                
                 if (typingIndicator) {
                     typingIndicator.remove();
                     typingIndicator = null;
                 }
                 
-                // We'll create the message div when we actually get text
                 let currentMessageDiv = null;
-                
-                // Track the raw text for markdown rendering
                 let currentMessageText = '';
-                
-                // Track tool calls and their container
                 let pendingToolCalls = new Map();
                 let currentToolCallsContainer = null;
                 
-                // Read the stream
                 const reader = response.body.getReader();
-                currentReader = reader; // Track for cancellation
+                currentReader = reader;
                 const decoder = new TextDecoder();
                 let buffer = '';
                 
@@ -841,73 +613,73 @@
                             try {
                                 const data = JSON.parse(line.slice(6));
                                 
-                                if (data.type === 'start') {
-                                    // Update model if changed
-                                    // Model is fixed at startup, no need to update
-                                } else if (data.type === 'text_delta') {
-                                    // If we need a new message div (e.g., after tool calls), create one
+                                if (data.type === 'text_delta') {
                                     if (!currentMessageDiv || !currentMessageDiv.parentNode) {
+                                        const wrapper = document.createElement('div');
+                                        wrapper.className = 'max-w-4xl mx-auto';
+                                        
                                         currentMessageDiv = document.createElement('div');
-                                        currentMessageDiv.className = 'message assistant';
-                                        currentMessageDiv.innerHTML = '';
-                                        messagesDiv.appendChild(currentMessageDiv);
-                                        currentMessageText = ''; // Reset text accumulator
+                                        currentMessageDiv.className = 'inline-block max-w-[70%] px-4 py-3 rounded-2xl bg-gray-700';
+                                        currentMessageDiv.innerHTML = '<div class="markdown-content"></div>';
+                                        
+                                        wrapper.appendChild(currentMessageDiv);
+                                        messagesDiv.appendChild(wrapper);
+                                        currentMessageText = '';
                                     }
-                                    // Accumulate text and re-render markdown
                                     currentMessageText += data.content;
-                                    currentMessageDiv.innerHTML = renderMarkdown(currentMessageText);
+                                    currentMessageDiv.querySelector('.markdown-content').innerHTML = renderMarkdown(currentMessageText);
                                     messagesDiv.scrollTop = messagesDiv.scrollHeight;
                                 } else if (data.type === 'tool_call') {
-                                    // Create tool calls container if it doesn't exist
                                     if (!currentToolCallsContainer) {
                                         currentToolCallsContainer = document.createElement('div');
-                                        currentToolCallsContainer.className = 'tool-calls';
-                                        // Don't append yet - we'll do it after the current message
+                                        currentToolCallsContainer.className = 'max-w-4xl mx-auto';
                                     }
                                     
                                     const toolCallDiv = createToolCallElement(
                                         { tool_name: data.tool_name, args: data.args, tool_call_id: data.tool_call_id },
-                                        null,  // No result yet
-                                        pendingToolCalls.size
+                                        null
                                     );
                                     currentToolCallsContainer.appendChild(toolCallDiv);
                                     pendingToolCalls.set(data.tool_call_id, toolCallDiv);
                                 } else if (data.type === 'tool_return') {
-                                    // Update tool call with result
                                     const toolCallDiv = pendingToolCalls.get(data.tool_call_id);
                                     if (toolCallDiv) {
-                                        // Update the existing tool call div with the result
-                                        const contentDiv = toolCallDiv.querySelector('.tool-call-content');
-                                        const responseSection = contentDiv.querySelector('.tool-call-section:last-child .tool-call-json');
-                                        responseSection.innerHTML = highlightJSON({ content: data.content });
+                                        const contentDiv = toolCallDiv.querySelector('div:last-child');
+                                        contentDiv.innerHTML = `
+                                            <div>
+                                                <h4 class="text-xs uppercase text-gray-500 mb-1">Request</h4>
+                                                <pre class="bg-gray-900 p-3 rounded text-xs overflow-x-auto"><code>${JSON.stringify({ tool_name: data.tool_name, args: {} }, null, 2)}</code></pre>
+                                            </div>
+                                            <div>
+                                                <h4 class="text-xs uppercase text-gray-500 mb-1">Response</h4>
+                                                <pre class="bg-gray-900 p-3 rounded text-xs overflow-x-auto"><code>${JSON.stringify({ content: data.content }, null, 2)}</code></pre>
+                                            </div>
+                                        `;
                                     }
                                     
-                                    // Now append the tool calls container after the message (if we haven't already)
                                     if (currentToolCallsContainer && !currentToolCallsContainer.parentNode) {
                                         messagesDiv.appendChild(currentToolCallsContainer);
                                     }
                                     
-                                    // Reset tool calls container for next batch
                                     currentToolCallsContainer = null;
-                                    
-                                    // Reset current message div so next text creates a new bubble
                                     currentMessageDiv = null;
-                                    currentMessageText = ''; // Reset text accumulator for new message
+                                    currentMessageText = '';
                                 } else if (data.type === 'done') {
-                                    // Ensure tool calls are appended if we have any
                                     if (currentToolCallsContainer && !currentToolCallsContainer.parentNode) {
                                         messagesDiv.appendChild(currentToolCallsContainer);
                                     }
                                     
-                                    // Clean up empty message divs if they exist
                                     if (currentMessageDiv && !currentMessageText.trim()) {
-                                        currentMessageDiv.remove();
+                                        currentMessageDiv.parentNode.remove();
                                     }
                                     
-                                    // Reset button state when done
                                     currentReader = null;
                                     sendButton.classList.remove('stop');
-                                    sendButton.innerHTML = '↑';
+                                    sendButton.innerHTML = `
+                                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"/>
+                                        </svg>
+                                    `;
                                     sendButton.title = 'Send message';
                                     sendButton.disabled = false;
                                 } else if (data.type === 'error') {
@@ -920,32 +692,32 @@
                     }
                 }
                 
-                // Final cleanup: remove any empty message divs after streaming ends
                 if (currentMessageDiv && !currentMessageText.trim()) {
-                    currentMessageDiv.remove();
+                    currentMessageDiv.parentNode.remove();
                 }
             } catch (error) {
-                // Handle cancellation gracefully
                 if (error.name !== 'AbortError') {
                     addMessage('system', `Error: ${error.message}`);
                 }
             } finally {
-                // Reset button state
                 currentReader = null;
                 sendButton.classList.remove('stop');
-                sendButton.innerHTML = '↑';
+                sendButton.innerHTML = `
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"/>
+                    </svg>
+                `;
                 sendButton.title = 'Send message';
                 sendButton.disabled = false;
             }
         }
         
-        // Load conversation history
+        // Load history
         async function loadHistory() {
             try {
                 const response = await fetch(`${API_BASE}/conversation`);
                 const data = await response.json();
                 
-                // Add existing messages with tool calls
                 data.messages.forEach(msg => {
                     addMessage(msg.role, msg.content, msg.tool_calls);
                 });
@@ -954,7 +726,22 @@
             }
         }
         
+        // Check server configuration
+        async function checkConfig() {
+            try {
+                const response = await fetch('/health');
+                const data = await response.json();
+                // Set streaming based on server config
+                useStreaming = data.streaming !== false;
+            } catch (error) {
+                console.error('Error checking config:', error);
+                // Default to streaming on error
+                useStreaming = true;
+            }
+        }
+        
         // Initialize
+        checkConfig();
         loadModels();
         loadHistory();
         input.focus();

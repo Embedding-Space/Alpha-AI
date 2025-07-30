@@ -36,8 +36,18 @@
       "provider": "Ollama (Local)"
     },
     {
+      "id": "ollama:qwen3:14b",
+      "name": "Qwen 3 14B",
+      "provider": "Ollama (Local)"
+    },
+    {
       "id": "ollama:gemma3n:e4b",
       "name": "Gemma 3N E4B",
+      "provider": "Ollama (Local)"
+    },
+    {
+      "id": "ollama:mistral-nemo:12b",
+      "name": "Mistral Nemo 12B",
       "provider": "Ollama (Local)"
     }
   ]
