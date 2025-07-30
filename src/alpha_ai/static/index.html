@@ -58,8 +58,7 @@
 </head>
 <body class="bg-gray-900 text-gray-100 flex flex-col h-screen">
     <!-- Header -->
-    <div class="px-4 py-3 bg-gray-800 border-b border-gray-700 flex items-center gap-3">
-        <span class="font-semibold text-lg">Alpha AI</span>
+    <div class="px-4 py-3 bg-gray-800 border-b border-gray-700 flex items-center gap-4">
         
         <!-- Model Selector Button -->
         <button id="model-selector-btn" class="flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors">
@@ -71,7 +70,16 @@
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
             </svg>
         </button>
-
+        
+        <!-- Model Pricing Info -->
+        <div id="model-pricing" class="text-sm text-gray-400 flex items-center gap-3">
+            <span id="input-price" class="hidden">
+                <span class="text-gray-500">Input:</span> <span class="text-gray-300">$<span class="price-value">-</span>/M</span>
+            </span>
+            <span id="output-price" class="hidden">
+                <span class="text-gray-500">Output:</span> <span class="text-gray-300">$<span class="price-value">-</span>/M</span>
+            </span>
+        </div>
     </div>
     
     <!-- Messages Container -->
@@ -143,6 +151,8 @@
         const modelSearch = document.getElementById('model-search');
         const modelList = document.getElementById('model-list');
         const modelCount = document.getElementById('model-count');
+        const inputPriceEl = document.getElementById('input-price');
+        const outputPriceEl = document.getElementById('output-price');
         const startNewChatBtn = document.getElementById('start-new-chat');
         
         let typingIndicator = null;
@@ -226,6 +236,31 @@
             renderModelList(e.target.value.toLowerCase());
         });
         
+        // Update pricing display
+        function updatePricingDisplay(model) {
+            if (!model) {
+                inputPriceEl.classList.add('hidden');
+                outputPriceEl.classList.add('hidden');
+                return;
+            }
+            
+            // Update input price
+            if (model.input_cost !== null && model.input_cost !== undefined) {
+                inputPriceEl.classList.remove('hidden');
+                inputPriceEl.querySelector('.price-value').textContent = model.input_cost.toFixed(2);
+            } else {
+                inputPriceEl.classList.add('hidden');
+            }
+            
+            // Update output price
+            if (model.output_cost !== null && model.output_cost !== undefined) {
+                outputPriceEl.classList.remove('hidden');
+                outputPriceEl.querySelector('.price-value').textContent = model.output_cost.toFixed(2);
+            } else {
+                outputPriceEl.classList.add('hidden');
+            }
+        }
+        
         // Load models
         async function loadModels() {
             try {
@@ -240,6 +275,7 @@
                 const model = availableModels.find(m => m.id === currentModel);
                 if (model) {
                     currentModelName.textContent = model.name;
+                    updatePricingDisplay(model);
                 }
                 
                 modelCount.textContent = availableModels.length;
@@ -379,6 +415,7 @@
                     const model = availableModels.find(m => m.id === currentModel);
                     if (model) {
                         currentModelName.textContent = model.name;
+                        updatePricingDisplay(model);
                     }
                     modelModal.classList.add('hidden');
                     input.focus();
@@ -810,7 +847,7 @@
         
         // Initialize
         checkConfig();
-        loadCurrentModel();
+        loadModels();  // This will load all models and update the current model display
         loadHistory();
         input.focus();
     </script>
