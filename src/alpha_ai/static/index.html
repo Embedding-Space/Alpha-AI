@@ -6,6 +6,8 @@
     <title>Alpha AI</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <!-- Markdown and syntax highlighting -->
     <script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
@@ -339,48 +341,110 @@
                 return;
             }
             
-            // Create a single list without provider grouping
-            const modelsContainer = document.createElement('div');
-            modelsContainer.className = 'space-y-2';
-            
+            // Group models by provider
+            const modelsByProvider = {};
             filteredModels.forEach(model => {
-                const modelCard = document.createElement('button');
-                modelCard.className = `p-3 rounded-lg border transition-all text-left w-full ${
-                    model.id === selectedModel ? 
-                    'bg-blue-600 bg-opacity-20 border-blue-600' : 
-                    'bg-gray-800 border-gray-700 hover:bg-gray-750 hover:border-gray-600'
-                }`;
-                
-                // Format pricing info
-                let pricingInfo = '';
-                if (model.input_cost !== null || model.output_cost !== null) {
-                    const input = model.input_cost !== null ? `$${model.input_cost.toFixed(2)}/M input` : '';
-                    const output = model.output_cost !== null ? `$${model.output_cost.toFixed(2)}/M output` : '';
-                    const separator = input && output ? ' • ' : '';
-                    pricingInfo = `<span class="text-gray-500">${input}${separator}${output}</span>`;
+                if (!modelsByProvider[model.provider]) {
+                    modelsByProvider[model.provider] = [];
                 }
+                modelsByProvider[model.provider].push(model);
+            });
+            
+            // Sort providers alphabetically
+            const sortedProviders = Object.keys(modelsByProvider).sort();
+            
+            // Sort models within each provider alphabetically
+            sortedProviders.forEach(provider => {
+                modelsByProvider[provider].sort((a, b) => a.name.localeCompare(b.name));
+            });
+            
+            // Track expanded providers
+            if (!window.expandedProviders) {
+                window.expandedProviders = new Set(sortedProviders); // All expanded by default
+            }
+            
+            // Create container
+            const modelsContainer = document.createElement('div');
+            modelsContainer.className = 'space-y-3';
+            
+            // Render each provider group
+            sortedProviders.forEach(provider => {
+                const providerGroup = document.createElement('div');
+                providerGroup.className = 'space-y-1';
                 
-                modelCard.innerHTML = `
-                    <div class="flex items-start justify-between">
-                        <div class="flex-1">
-                            <div class="flex items-center gap-2">
-                                <span class="font-medium text-base">${model.name}</span>
-                                ${model.id === currentModel ? '<span class="text-xs bg-gray-700 px-2 py-0.5 rounded">Current</span>' : ''}
-                            </div>
-                            <div class="text-sm text-gray-400 mt-0.5">
-                                by ${model.provider}
-                                ${pricingInfo ? ' • ' + pricingInfo : ''}
-                            </div>
-                        </div>
-                    </div>
-                `;
+                // Provider header
+                const providerHeader = document.createElement('button');
+                providerHeader.className = 'w-full text-left text-sm font-medium text-gray-300 hover:text-white transition-colors flex items-center gap-2';
                 
-                modelCard.addEventListener('click', () => {
-                    selectedModel = model.id;
+                const isExpanded = window.expandedProviders.has(provider);
+                
+                const caret = document.createElement('i');
+                caret.className = `fas fa-caret-${isExpanded ? 'down' : 'right'} text-xs`;
+                
+                const providerText = document.createElement('span');
+                providerText.textContent = provider;
+                
+                providerHeader.appendChild(caret);
+                providerHeader.appendChild(providerText);
+                
+                providerHeader.addEventListener('click', () => {
+                    if (window.expandedProviders.has(provider)) {
+                        window.expandedProviders.delete(provider);
+                    } else {
+                        window.expandedProviders.add(provider);
+                    }
                     renderModelList(searchTerm);
                 });
                 
-                modelsContainer.appendChild(modelCard);
+                providerGroup.appendChild(providerHeader);
+                
+                // Models container
+                if (isExpanded) {
+                    const modelsInProvider = document.createElement('div');
+                    modelsInProvider.className = 'space-y-1';
+                    
+                    modelsByProvider[provider].forEach(model => {
+                        const modelCard = document.createElement('button');
+                        modelCard.className = `w-full p-3 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors text-left flex items-center justify-between ${
+                            model.id === selectedModel ? 'ring-2 ring-blue-500' : ''
+                        }`;
+                        
+                        // Model name
+                        const modelName = document.createElement('div');
+                        modelName.className = 'text-sm text-white flex-1';
+                        modelName.textContent = model.name;
+                        
+                        // Pricing
+                        const pricingDiv = document.createElement('div');
+                        pricingDiv.className = 'text-xs text-gray-400 text-right';
+                        
+                        if (model.input_cost !== null || model.output_cost !== null) {
+                            const prices = [];
+                            if (model.input_cost !== null) {
+                                prices.push(`$${model.input_cost.toFixed(2)}/M input`);
+                            }
+                            if (model.output_cost !== null) {
+                                prices.push(`$${model.output_cost.toFixed(2)}/M output`);
+                            }
+                            pricingDiv.textContent = prices.join(' • ');
+                        }
+                        
+                        modelCard.appendChild(modelName);
+                        modelCard.appendChild(pricingDiv);
+                        
+                        modelCard.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            selectedModel = model.id;
+                            renderModelList(searchTerm);
+                        });
+                        
+                        modelsInProvider.appendChild(modelCard);
+                    });
+                    
+                    providerGroup.appendChild(modelsInProvider);
+                }
+                
+                modelsContainer.appendChild(providerGroup);
             });
             
             modelList.appendChild(modelsContainer);
