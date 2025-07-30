@@ -181,10 +181,27 @@
         }
         
         // Modal handling
-        modelSelectorBtn.addEventListener('click', () => {
+        modelSelectorBtn.addEventListener('click', async () => {
+            modelModal.classList.remove('hidden');
+            
+            // Show loading state
+            modelList.innerHTML = `
+                <div class="flex items-center justify-center py-12">
+                    <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-400"></div>
+                </div>
+            `;
+            modelCount.textContent = 'Loading...';
+            modelSearch.value = '';
+            modelSearch.disabled = true;
+            startNewChatBtn.disabled = true;
+            
+            // Load fresh models
+            await loadModels();
+            
+            // Enable search and render
+            modelSearch.disabled = false;
             selectedModel = currentModel;
             renderModelList();
-            modelModal.classList.remove('hidden');
             modelSearch.focus();
         });
         
@@ -740,9 +757,23 @@
             }
         }
         
+        // Get just the current model info
+        async function loadCurrentModel() {
+            try {
+                const response = await fetch(`${API_BASE}/model`);
+                const data = await response.json();
+                currentModel = data.model;
+                // Show the model ID as the name initially
+                currentModelName.textContent = currentModel.split(':')[1] || currentModel;
+            } catch (error) {
+                console.error('Error loading current model:', error);
+                currentModelName.textContent = 'Unknown';
+            }
+        }
+        
         // Initialize
         checkConfig();
-        loadModels();
+        loadCurrentModel();
         loadHistory();
         input.focus();
     </script>

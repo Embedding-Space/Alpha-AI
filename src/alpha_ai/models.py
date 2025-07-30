@@ -75,6 +75,8 @@ class AvailableModel(BaseModel):
     id: str = Field(description="Model identifier (e.g., 'openai:gpt-4o')")
     name: str = Field(description="Display name (e.g., 'GPT-4o')")
     provider: str = Field(description="Provider name (e.g., 'OpenAI')")
+    input_cost: Optional[float] = Field(None, description="Cost per million input tokens")
+    output_cost: Optional[float] = Field(None, description="Cost per million output tokens")
 
 
 class ModelsResponse(BaseModel):

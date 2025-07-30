@@ -15,6 +15,8 @@ from pydantic_ai.providers.openai import OpenAIProvider
 
 from .settings import settings
 from .mcp_config import create_mcp_servers_from_file
+from .model_discovery import model_discovery
+from .models import AvailableModel
 
 
 class AlphaAgentManager:
@@ -26,41 +28,52 @@ class AlphaAgentManager:
         self.current_model: str = settings.model
         self.system_prompt = self._load_system_prompt()
         self.mcp_servers: Dict[str, Any] = {}
-        self.available_models: Dict[str, Dict[str, str]] = {}
-        self._load_available_models()
+        self.available_models: Dict[str, AvailableModel] = {}
         
-    def _load_available_models(self):
-        """Load available models from models.json."""
-        models_file = Path("models.json")
-        if models_file.exists():
-            try:
-                data = json.loads(models_file.read_text())
-                self.available_models = {
-                    model["id"]: model 
-                    for model in data["models"]
-                }
-            except Exception as e:
-                print(f"Warning: Failed to load models.json: {e}")
-                # Fallback to just the configured model
-                self.available_models = {
-                    settings.model: {
-                        "id": settings.model,
-                        "name": settings.model,
-                        "provider": "Unknown"
-                    }
-                }
-        else:
-            # If no models.json, just use the configured model
+    async def _load_available_models(self):
+        """Discover available models from all providers."""
+        try:
+            models = await model_discovery.discover_all()
+            self.available_models = {model.id: model for model in models}
+            
+            # Ensure the configured model is in the list (fallback)
+            if settings.model not in self.available_models:
+                parts = settings.model.split(":", 1)
+                provider = parts[0].capitalize() if len(parts) > 1 else "Unknown"
+                name = parts[1] if len(parts) > 1 else settings.model
+                
+                self.available_models[settings.model] = AvailableModel(
+                    id=settings.model,
+                    name=name,
+                    provider=provider,
+                    input_cost=None,
+                    output_cost=None
+                )
+                
+            print(f"Discovered {len(self.available_models)} models from providers")
+            
+        except Exception as e:
+            print(f"Error discovering models: {e}")
+            # Fallback to just the configured model
+            parts = settings.model.split(":", 1)
+            provider = parts[0].capitalize() if len(parts) > 1 else "Unknown"
+            name = parts[1] if len(parts) > 1 else settings.model
+            
             self.available_models = {
-                settings.model: {
-                    "id": settings.model,
-                    "name": settings.model,
-                    "provider": "Unknown"
-                }
+                settings.model: AvailableModel(
+                    id=settings.model,
+                    name=name,
+                    provider=provider,
+                    input_cost=None,
+                    output_cost=None
+                )
             }
     
     async def initialize(self):
         """Initialize the default agent."""
+        # Load available models
+        await self._load_available_models()
+        
         # Load MCP servers once
         if not self.mcp_servers and settings.mcp_config_file:
             config_path = Path(settings.mcp_config_file)
@@ -233,7 +246,7 @@ Respond helpfully and concisely to user queries, using tools as needed."""
         """Get the current model string."""
         return self.current_model
     
-    def get_available_models(self) -> Dict[str, Dict[str, str]]:
+    def get_available_models(self) -> Dict[str, AvailableModel]:
         """Get all available models."""
         return self.available_models
     

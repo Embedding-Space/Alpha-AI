@@ -321,6 +321,9 @@ async def get_model():
 @app.get(f"{settings.api_v1_prefix}/models", response_model=ModelsResponse)
 async def get_models():
     """Get all available models."""
+    # Refresh model list on every request
+    await agent_manager._load_available_models()
+    
     return ModelsResponse(
         models=list(agent_manager.get_available_models().values()),
         current=agent_manager.get_model()
