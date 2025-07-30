@@ -98,6 +98,10 @@ async def health_check():
 @app.post(f"{settings.api_v1_prefix}/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest, db: Session = Depends(get_db)):
     """Send a message and get a response."""
+    # Check if a model is selected
+    if not agent_manager.get_model():
+        raise HTTPException(status_code=400, detail="No model selected")
+    
     # Add user message event
     conversation_manager.add_user_message(db, request.message)
     
@@ -182,6 +186,10 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
 @app.post(f"{settings.api_v1_prefix}/chat/stream")
 async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
     """Stream a response using Server-Sent Events with proper graph-based streaming."""
+    # Check if a model is selected
+    if not agent_manager.get_model():
+        raise HTTPException(status_code=400, detail="No model selected")
+    
     # Add user message to database
     conversation_manager.add_user_message(db, request.message)
     

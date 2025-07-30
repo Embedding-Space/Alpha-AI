@@ -67,7 +67,7 @@
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/>
             </svg>
-            <span id="current-model-name" class="text-sm">Loading...</span>
+            <span id="current-model-name" class="text-sm">Select model...</span>
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
             </svg>
@@ -89,10 +89,10 @@
     
     <!-- Input Container -->
     <div class="p-4 bg-gray-800 border-t border-gray-700 flex gap-3 items-end">
-        <textarea id="input" placeholder="Message Alpha..." rows="1" 
+        <textarea id="input" placeholder="Select a model first..." rows="1" disabled
             class="flex-1 bg-gray-700 border border-gray-600 rounded-3xl px-5 py-3 text-base resize-none outline-none focus:border-gray-500 placeholder-gray-400 min-h-[48px] max-h-32"></textarea>
-        <button id="send-button" title="Send message" 
-            class="w-12 h-12 rounded-full bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center transition-all hover:scale-105 disabled:bg-gray-600 disabled:cursor-not-allowed">
+        <button id="send-button" title="Send message" disabled
+            class="w-12 h-12 rounded-full bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center transition-all hover:scale-105 disabled:bg-gray-600 disabled:cursor-not-allowed opacity-50 cursor-not-allowed">
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"/>
             </svg>
@@ -238,6 +238,21 @@
             renderModelList(e.target.value.toLowerCase());
         });
         
+        // Update input state based on model selection
+        function updateInputState() {
+            const hasModel = currentModel !== null;
+            input.disabled = !hasModel;
+            sendButton.disabled = !hasModel;
+            
+            if (!hasModel) {
+                input.placeholder = 'Select a model first...';
+                sendButton.classList.add('opacity-50', 'cursor-not-allowed');
+            } else {
+                input.placeholder = 'Message Alpha...';
+                sendButton.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+        }
+        
         // Update pricing display
         function updatePricingDisplay(model) {
             if (!model) {
@@ -270,15 +285,27 @@
                 const data = await response.json();
                 
                 availableModels = data.models;
-                currentModel = data.current;
-                selectedModel = currentModel;
+                
+                // Set currentModel from server if we don't have one from conversation history
+                if (!currentModel && data.current) {
+                    currentModel = data.current;
+                    selectedModel = currentModel;
+                }
                 
                 // Update current model display
-                const model = availableModels.find(m => m.id === currentModel);
-                if (model) {
-                    currentModelName.textContent = model.name;
-                    updatePricingDisplay(model);
+                if (currentModel) {
+                    const model = availableModels.find(m => m.id === currentModel);
+                    if (model) {
+                        currentModelName.textContent = model.name;
+                        updatePricingDisplay(model);
+                    }
+                } else {
+                    currentModelName.textContent = 'Select model...';
+                    updatePricingDisplay(null);
                 }
+                
+                // Update input state based on model selection
+                updateInputState();
                 
                 modelCount.textContent = availableModels.length;
             } catch (error) {
@@ -481,6 +508,7 @@
                         currentModelName.textContent = model.name;
                         updatePricingDisplay(model);
                     }
+                    updateInputState(); // Enable input and send button
                     modelModal.classList.add('hidden');
                     input.focus();
                 } else {
@@ -665,7 +693,7 @@
         // Send message
         async function sendMessage() {
             const message = input.value.trim();
-            if (!message) return;
+            if (!message || !currentModel) return;
             
             input.disabled = true;
             sendButton.disabled = true;
@@ -873,6 +901,13 @@
                 const response = await fetch(`${API_BASE}/conversation`);
                 const data = await response.json();
                 
+                // If there's a model in the conversation and we don't have one set, use it
+                if (data.model && !currentModel) {
+                    currentModel = data.model;
+                    selectedModel = currentModel;
+                    // The display will be updated when loadModels runs
+                }
+                
                 data.messages.forEach(msg => {
                     addMessage(msg.role, msg.content, msg.tool_calls);
                 });
@@ -910,10 +945,19 @@
         }
         
         // Initialize
-        checkConfig();
-        loadModels();  // This will load all models and update the current model display
-        loadHistory();
-        input.focus();
+        async function initialize() {
+            await checkConfig();
+            
+            // Load history first to see if there's a model from the conversation
+            await loadHistory();
+            
+            // Then load models (which will use the model from history if set)
+            await loadModels();
+            
+            input.focus();
+        }
+        
+        initialize();
     </script>
 </body>
 </html>

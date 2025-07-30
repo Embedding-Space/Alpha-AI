@@ -26,7 +26,7 @@ class AlphaAgentManager:
     def __init__(self):
         self.agents: Dict[str, Agent] = {}
         self.agent_contexts: Dict[str, Any] = {}
-        self.current_model: str = settings.model
+        self.current_model: Optional[str] = settings.model
         self.system_prompt = self._load_system_prompt()
         self.mcp_servers: Dict[str, Any] = {}
         self.available_models: Dict[str, AvailableModel] = {}
@@ -89,8 +89,9 @@ class AlphaAgentManager:
             else:
                 print(f"Warning: MCP config file not found: {config_path}")
         
-        # Initialize the default agent
-        await self.get_or_create_agent(self.current_model)
+        # Initialize the default agent only if a model is configured
+        if self.current_model:
+            await self.get_or_create_agent(self.current_model)
     
     def _load_system_prompt(self) -> str:
         """Load the system prompt from file or return empty string."""
@@ -236,7 +237,7 @@ class AlphaAgentManager:
         """Get the current agent for compatibility."""
         return self.agents.get(self.current_model)
     
-    def get_model(self) -> str:
+    def get_model(self) -> Optional[str]:
         """Get the current model string."""
         return self.current_model
     
