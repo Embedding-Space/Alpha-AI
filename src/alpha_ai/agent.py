@@ -92,30 +92,17 @@ class AlphaAgentManager:
         await self.get_or_create_agent(self.current_model)
     
     def _load_system_prompt(self) -> str:
-        """Load the system prompt for Alpha."""
-        # Try to load from file first
+        """Load the system prompt from file or return empty string."""
         prompt_file = Path("system_prompt.md")
         if prompt_file.exists():
             try:
                 return prompt_file.read_text(encoding="utf-8")
             except Exception as e:
                 print(f"Warning: Failed to read system_prompt.md: {e}")
-                print("Falling back to default prompt")
+                return ""
         
-        # Default prompt if file doesn't exist
-        return """You are Alpha AI, a helpful AI assistant with access to various tools.
-
-You have access to conversation history and can maintain context across messages.
-
-When you need to retrieve information, perform actions, or access external data, use the available tools. 
-Always use tools when explicitly asked to do so, and proactively use them when they would help answer questions more accurately.
-
-Available tool prefixes indicate their source:
-- alpha-brain_: Memory and knowledge tools
-- fetch_: Web fetching tools  
-- context7_: Documentation lookup tools
-
-Respond helpfully and concisely to user queries, using tools as needed."""
+        # No file exists, return empty string
+        return ""
     
     def _parse_model_string(self, model: str) -> tuple[str, str]:
         """Parse model string like 'ollama:qwen2.5:14b' into provider and model."""
