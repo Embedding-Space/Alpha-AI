@@ -91,7 +91,7 @@
 
     <!-- Model Selector Modal -->
     <div id="model-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-        <div class="bg-gray-800 rounded-xl max-w-3xl w-full max-h-[80vh] flex flex-col">
+        <div class="bg-gray-800 rounded-xl max-w-3xl w-full h-[80vh] flex flex-col">
             <!-- Modal Header -->
             <div class="p-6 border-b border-gray-700">
                 <div class="flex items-center justify-between mb-4">
@@ -184,24 +184,30 @@
         modelSelectorBtn.addEventListener('click', async () => {
             modelModal.classList.remove('hidden');
             
-            // Show loading state
+            // Clear search and show empty state
+            modelSearch.value = '';
             modelList.innerHTML = `
-                <div class="flex items-center justify-center py-12">
-                    <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-400"></div>
+                <div class="flex items-center justify-center py-24 text-gray-500">
+                    <div class="text-center">
+                        <svg class="w-12 h-12 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                        </svg>
+                        <p class="text-lg">Start typing to search models</p>
+                        <p class="text-sm mt-1">Try "gpt", "claude", or "llama"</p>
+                    </div>
                 </div>
             `;
-            modelCount.textContent = 'Loading...';
-            modelSearch.value = '';
-            modelSearch.disabled = true;
-            startNewChatBtn.disabled = true;
+            modelCount.textContent = '0';
             
-            // Load fresh models
-            await loadModels();
+            // Load models in background if not already loaded
+            if (availableModels.length === 0) {
+                loadModels().then(() => {
+                    // Update count but don't render unless there's a search term
+                    modelCount.textContent = availableModels.length;
+                });
+            }
             
-            // Enable search and render
-            modelSearch.disabled = false;
             selectedModel = currentModel;
-            renderModelList();
             modelSearch.focus();
         });
         
@@ -245,72 +251,103 @@
         
         // Render model list
         function renderModelList(searchTerm = '') {
-            // Group models by provider
-            const modelsByProvider = {};
-            let filteredCount = 0;
+            // If no search term, show empty state
+            if (!searchTerm) {
+                modelList.innerHTML = `
+                    <div class="flex items-center justify-center py-24 text-gray-500">
+                        <div class="text-center">
+                            <svg class="w-12 h-12 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                            </svg>
+                            <p class="text-lg">Start typing to search models</p>
+                            <p class="text-sm mt-1">Try "gpt", "claude", or "llama"</p>
+                        </div>
+                    </div>
+                `;
+                modelCount.textContent = availableModels.length;
+                return;
+            }
+            
+            let filteredModels = [];
             
             availableModels.forEach(model => {
-                const matchesSearch = !searchTerm || 
+                const matchesSearch = 
                     model.name.toLowerCase().includes(searchTerm) ||
                     model.provider.toLowerCase().includes(searchTerm) ||
                     model.id.toLowerCase().includes(searchTerm);
                 
                 if (matchesSearch) {
-                    if (!modelsByProvider[model.provider]) {
-                        modelsByProvider[model.provider] = [];
-                    }
-                    modelsByProvider[model.provider].push(model);
-                    filteredCount++;
+                    filteredModels.push(model);
                 }
             });
             
             // Update count
-            modelCount.textContent = searchTerm ? 
-                `${filteredCount} of ${availableModels.length}` : 
-                availableModels.length;
+            modelCount.textContent = `${filteredModels.length} of ${availableModels.length}`;
             
             // Clear and render
             modelList.innerHTML = '';
             
-            Object.keys(modelsByProvider).sort().forEach(provider => {
-                const providerDiv = document.createElement('div');
-                providerDiv.className = 'mb-4';
-                
-                const providerHeader = document.createElement('h3');
-                providerHeader.className = 'text-sm font-semibold text-gray-400 mb-2';
-                providerHeader.textContent = provider;
-                providerDiv.appendChild(providerHeader);
-                
-                const modelsGrid = document.createElement('div');
-                modelsGrid.className = 'grid gap-2';
-                
-                modelsByProvider[provider].forEach(model => {
-                    const modelCard = document.createElement('button');
-                    modelCard.className = `p-4 rounded-lg border transition-all text-left w-full ${
-                        model.id === selectedModel ? 
-                        'bg-blue-600 bg-opacity-20 border-blue-600 text-blue-400' : 
-                        'bg-gray-700 border-gray-600 hover:bg-gray-600 hover:border-gray-500'
-                    }`;
-                    
-                    modelCard.innerHTML = `
-                        <div class="font-medium ${model.id === currentModel ? 'flex items-center gap-2' : ''}">
-                            ${model.name}
-                            ${model.id === currentModel ? '<span class="text-xs bg-gray-600 px-2 py-1 rounded">Current</span>' : ''}
+            // Show no results message if needed
+            if (filteredModels.length === 0) {
+                modelList.innerHTML = `
+                    <div class="flex items-center justify-center py-24 text-gray-500">
+                        <div class="text-center">
+                            <svg class="w-12 h-12 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M12 12h.01M12 12h.01M12 12h.01M12 12h.01M12 12h.01M12 12h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            <p class="text-lg">No models found</p>
+                            <p class="text-sm mt-1">Try a different search term</p>
                         </div>
-                        <div class="text-xs text-gray-400 mt-1">${model.id}</div>
-                    `;
-                    
-                    modelCard.addEventListener('click', () => {
-                        selectedModel = model.id;
-                        renderModelList(searchTerm);
-                    });
-                    
-                    modelsGrid.appendChild(modelCard);
+                    </div>
+                `;
+                return;
+            }
+            
+            // Create a single list without provider grouping
+            const modelsContainer = document.createElement('div');
+            modelsContainer.className = 'space-y-2';
+            
+            filteredModels.forEach(model => {
+                const modelCard = document.createElement('button');
+                modelCard.className = `p-3 rounded-lg border transition-all text-left w-full ${
+                    model.id === selectedModel ? 
+                    'bg-blue-600 bg-opacity-20 border-blue-600' : 
+                    'bg-gray-800 border-gray-700 hover:bg-gray-750 hover:border-gray-600'
+                }`;
+                
+                // Format pricing info
+                let pricingInfo = '';
+                if (model.input_cost !== null || model.output_cost !== null) {
+                    const input = model.input_cost !== null ? `$${model.input_cost.toFixed(2)}/M input` : '';
+                    const output = model.output_cost !== null ? `$${model.output_cost.toFixed(2)}/M output` : '';
+                    const separator = input && output ? ' • ' : '';
+                    pricingInfo = `<span class="text-gray-500">${input}${separator}${output}</span>`;
+                }
+                
+                modelCard.innerHTML = `
+                    <div class="flex items-start justify-between">
+                        <div class="flex-1">
+                            <div class="flex items-center gap-2">
+                                <span class="font-medium text-base">${model.name}</span>
+                                ${model.id === currentModel ? '<span class="text-xs bg-gray-700 px-2 py-0.5 rounded">Current</span>' : ''}
+                            </div>
+                            <div class="text-sm text-gray-400 mt-0.5">
+                                by ${model.provider}
+                                ${pricingInfo ? ' • ' + pricingInfo : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                modelCard.addEventListener('click', () => {
+                    selectedModel = model.id;
+                    renderModelList(searchTerm);
                 });
                 
-                providerDiv.appendChild(modelsGrid);
-                modelList.appendChild(providerDiv);
+                modelsContainer.appendChild(modelCard);
             });
+            
+            modelList.appendChild(modelsContainer);
             
             // Update start button state and text
             startNewChatBtn.disabled = !selectedModel;
