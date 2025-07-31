@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Brain, SquarePen, PanelLeft, Copy } from 'lucide-react'
+import { Brain, SquarePen, PanelLeft, Copy, ChevronDown, ChevronRight, Search, X } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
@@ -17,6 +17,14 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 import {
   Tooltip,
   TooltipContent,
@@ -70,10 +78,63 @@ interface Message {
   content: string
 }
 
+interface Model {
+  id: string
+  name: string
+  provider: string
+  input_cost?: number
+  output_cost?: number
+}
+
 function App() {
   const [conversations, setConversations] = useState<string[]>([])
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
+  
+  // Model selector state
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [availableModels, setAvailableModels] = useState<Model[]>([])
+  const [currentModel, setCurrentModel] = useState<string | null>(null)
+  const [selectedModel, setSelectedModel] = useState<string | null>(null)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [expandedProviders, setExpandedProviders] = useState<Set<string>>(new Set())
+
+  // Mock data for now - will be replaced with API calls
+  const mockModels: Model[] = [
+    { id: 'openai:gpt-4o', name: 'GPT-4o', provider: 'OpenAI' },
+    { id: 'openai:gpt-4o-mini', name: 'GPT-4o Mini', provider: 'OpenAI' },
+    { id: 'groq:llama3-70b-8192', name: 'Llama 3 70B', provider: 'Groq' },
+    { id: 'groq:llama3-8b-8192', name: 'Llama 3 8B', provider: 'Groq' },
+    { id: 'openrouter:anthropic/claude-3-opus', name: 'Claude 3 Opus', provider: 'OpenRouter', input_cost: 15.00, output_cost: 75.00 },
+    { id: 'openrouter:anthropic/claude-3-sonnet', name: 'Claude 3 Sonnet', provider: 'OpenRouter', input_cost: 3.00, output_cost: 15.00 },
+    { id: 'openrouter:meta-llama/llama-3.1-405b-instruct', name: 'Llama 3.1 405B', provider: 'OpenRouter', input_cost: 5.00, output_cost: 15.00 },
+  ]
+
+  // Group models by provider
+  const groupedModels = mockModels.reduce((acc, model) => {
+    if (!acc[model.provider]) {
+      acc[model.provider] = []
+    }
+    acc[model.provider].push(model)
+    return acc
+  }, {} as Record<string, Model[]>)
+
+  // Filter models based on search term
+  const filteredModels = searchTerm 
+    ? mockModels.filter(model => 
+        model.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        model.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        model.provider.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+    : mockModels
+
+  const filteredGroupedModels = filteredModels.reduce((acc, model) => {
+    if (!acc[model.provider]) {
+      acc[model.provider] = []
+    }
+    acc[model.provider].push(model)
+    return acc
+  }, {} as Record<string, Model[]>)
 
   // Custom markdown components
   const markdownComponents = {
@@ -198,7 +259,13 @@ The actual API integration will come later, but the markdown rendering is ready 
                 <SidebarMenu>
                   <SidebarMenuItem>
                     <SidebarMenuButton 
-                      onClick={() => setConversations([...conversations, `Chat ${conversations.length + 1}`])}
+                      onClick={() => {
+                        setSelectedModel(currentModel)
+                        setSearchTerm('')
+                        // Expand all providers by default
+                        setExpandedProviders(new Set(Object.keys(groupedModels)))
+                        setIsModalOpen(true)
+                      }}
                       className="w-full"
                       tooltip="New chat"
                     >
@@ -295,19 +362,140 @@ The actual API integration will come later, but the markdown rendering is ready 
                   rows={1}
                 />
               </form>
-              <div className="flex items-center gap-2 mt-2 px-2">
-                <span className="text-[11px] text-muted-foreground">openrouter:openrouter/horizon-alpha</span>
-                <button
-                  type="button"
-                  className="text-muted-foreground hover:text-foreground transition-colors"
-                  onClick={() => navigator.clipboard.writeText('openrouter:openrouter/horizon-alpha')}
-                >
-                  <Copy className="h-3 w-3" />
-                </button>
-              </div>
+              {currentModel && (
+                <div className="flex items-center gap-2 mt-2 px-2">
+                  <span className="text-[11px] text-muted-foreground">{currentModel}</span>
+                  <button
+                    type="button"
+                    className="text-muted-foreground hover:text-foreground transition-colors"
+                    onClick={() => navigator.clipboard.writeText(currentModel)}
+                  >
+                    <Copy className="h-3 w-3" />
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </main>
+
+        {/* Model Selector Modal */}
+        <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+          <DialogContent className="!w-[900px] !max-w-[90vw] h-[80vh] flex flex-col p-0" style={{ width: '900px', maxWidth: '90vw' }}>
+            <DialogHeader className="p-6 border-b border-border">
+              <div className="flex items-center justify-between">
+                <DialogTitle className="text-2xl font-semibold">Select Model</DialogTitle>
+              </div>
+              
+              {/* Search Bar */}
+              <div className="relative mt-4">
+                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search models..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+            </DialogHeader>
+
+            {/* Model List */}
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+              {Object.keys(filteredGroupedModels).length === 0 ? (
+                <div className="flex items-center justify-center py-24 text-muted-foreground">
+                  <div className="text-center">
+                    <Search className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <p className="text-lg">No models found</p>
+                    <p className="text-sm mt-1">Try a different search term</p>
+                  </div>
+                </div>
+              ) : (
+                Object.entries(filteredGroupedModels)
+                  .sort(([a], [b]) => a.localeCompare(b))
+                  .map(([provider, models]) => (
+                    <div key={provider} className="space-y-2">
+                      {/* Provider Header */}
+                      <button
+                        className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                        onClick={() => {
+                          const newExpanded = new Set(expandedProviders)
+                          if (newExpanded.has(provider)) {
+                            newExpanded.delete(provider)
+                          } else {
+                            newExpanded.add(provider)
+                          }
+                          setExpandedProviders(newExpanded)
+                        }}
+                      >
+                        {expandedProviders.has(provider) ? (
+                          <ChevronDown className="h-4 w-4" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4" />
+                        )}
+                        {provider}
+                      </button>
+
+                      {/* Models in Provider */}
+                      {expandedProviders.has(provider) && (
+                        <div className="space-y-1">
+                          {models
+                            .sort((a, b) => a.name.localeCompare(b.name))
+                            .map((model) => (
+                              <button
+                                key={model.id}
+                                className={`w-full p-3 rounded-lg text-left flex items-center justify-between transition-colors ${
+                                  model.id === selectedModel 
+                                    ? 'ring-2 ring-blue-600 bg-blue-600/10' 
+                                    : 'bg-muted hover:bg-muted/80'
+                                }`}
+                                onClick={() => setSelectedModel(model.id)}
+                              >
+                                <div className="text-sm">{model.id}</div>
+                                {(model.input_cost || model.output_cost) && (
+                                  <div className="text-xs text-muted-foreground">
+                                    {model.input_cost && `$${model.input_cost.toFixed(2)}/M input`}
+                                    {model.input_cost && model.output_cost && ' • '}
+                                    {model.output_cost && `$${model.output_cost.toFixed(2)}/M output`}
+                                  </div>
+                                )}
+                              </button>
+                            ))}
+                        </div>
+                      )}
+                    </div>
+                  ))
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-6 border-t border-border">
+              <div className="flex justify-between items-center mb-4">
+                <div className="text-sm text-muted-foreground">
+                  {filteredModels.length} models available
+                </div>
+                <div className="flex items-center gap-3">
+                  <label className="text-sm text-muted-foreground">System Prompt:</label>
+                  <select className="px-3 py-1.5 bg-background border border-border rounded-lg text-sm">
+                    <option value="none">none</option>
+                    <option value="unirag.md">unirag.md</option>
+                  </select>
+                </div>
+              </div>
+              <Button 
+                className="w-full"
+                disabled={!selectedModel}
+                onClick={() => {
+                  if (selectedModel) {
+                    setCurrentModel(selectedModel)
+                    setMessages([]) // Clear chat
+                    setIsModalOpen(false)
+                  }
+                }}
+              >
+                {selectedModel === currentModel ? 'Clear Chat & Continue' : 'Start New Chat'}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </SidebarProvider>
   )
