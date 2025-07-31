@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Brain, SquarePen, PanelLeft, Copy, ChevronDown, ChevronRight, Search, X, FileText } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Brain, SquarePen, PanelLeft, Copy, ChevronDown, ChevronRight, Search, X, FileText, Code } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
@@ -72,10 +72,23 @@ function SidebarHeaderContent() {
   )
 }
 
+interface ToolCall {
+  tool_name: string
+  args: any
+  tool_call_id: string
+}
+
+interface ToolResponse {
+  tool_name: string
+  content: string
+  tool_call_id: string
+}
+
 interface Message {
   id: string
   role: 'user' | 'assistant'
   content: string
+  tool_calls?: Array<[ToolCall, ToolResponse]>
 }
 
 interface Model {
@@ -84,6 +97,108 @@ interface Model {
   provider: string
   input_cost?: number
   output_cost?: number
+}
+
+function ToolCallDisplay({ toolCalls }: { toolCalls: Array<[ToolCall, ToolResponse]> }) {
+  const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set())
+
+  const toggleTool = (toolCallId: string) => {
+    const newExpanded = new Set(expandedTools)
+    if (newExpanded.has(toolCallId)) {
+      newExpanded.delete(toolCallId)
+    } else {
+      newExpanded.add(toolCallId)
+    }
+    setExpandedTools(newExpanded)
+  }
+
+  return (
+    <div className="space-y-2 my-3">
+      {toolCalls.map(([call, response], index) => {
+        const isExpanded = expandedTools.has(call.tool_call_id)
+        
+        return (
+          <div key={call.tool_call_id || index} className="rounded-lg bg-muted/50 border border-border overflow-hidden">
+            <button
+              className="w-full px-4 py-2 flex items-center gap-2 text-left hover:bg-muted/80 transition-colors"
+              onClick={() => toggleTool(call.tool_call_id)}
+            >
+              <Code className="h-4 w-4 text-muted-foreground" />
+              <span className="font-mono text-sm">{call.tool_name}</span>
+              {isExpanded ? (
+                <ChevronDown className="h-4 w-4 ml-auto text-muted-foreground" />
+              ) : (
+                <ChevronRight className="h-4 w-4 ml-auto text-muted-foreground" />
+              )}
+            </button>
+            
+            {isExpanded && (
+              <div className="px-4 pb-3 space-y-3">
+                {/* Request */}
+                <div>
+                  <div className="text-xs font-medium text-muted-foreground mb-1">REQUEST</div>
+                  <div className="rounded-md overflow-hidden">
+                    <SyntaxHighlighter
+                      language="json"
+                      style={oneDark}
+                      customStyle={{
+                        margin: 0,
+                        fontSize: '12px',
+                        padding: '12px',
+                      }}
+                    >
+                      {JSON.stringify({
+                        tool_name: call.tool_name,
+                        args: call.args
+                      }, null, 2)}
+                    </SyntaxHighlighter>
+                  </div>
+                </div>
+                
+                {/* Response */}
+                <div>
+                  <div className="text-xs font-medium text-muted-foreground mb-1">RESPONSE</div>
+                  <div className="rounded-md overflow-hidden">
+                    <SyntaxHighlighter
+                      language="json"
+                      style={oneDark}
+                      customStyle={{
+                        margin: 0,
+                        fontSize: '12px',
+                        padding: '12px',
+                      }}
+                    >
+                      {(() => {
+                        try {
+                          // Try to parse the content as JSON first
+                          const parsed = JSON.parse(response.content);
+                          return JSON.stringify(parsed, null, 2);
+                        } catch {
+                          // If it's not valid JSON, try to convert Python dict to JSON
+                          try {
+                            const jsonString = response.content
+                              .replace(/'/g, '"')  // Replace single quotes with double quotes
+                              .replace(/True/g, 'true')  // Python True to JSON true
+                              .replace(/False/g, 'false')  // Python False to JSON false
+                              .replace(/None/g, 'null');  // Python None to JSON null
+                            const parsed = JSON.parse(jsonString);
+                            return JSON.stringify(parsed, null, 2);
+                          } catch {
+                            // If all else fails, just show the raw content
+                            return JSON.stringify({ content: response.content }, null, 2);
+                          }
+                        }
+                      })()}
+                    </SyntaxHighlighter>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
 }
 
 function App() {
@@ -97,7 +212,7 @@ function App() {
     return true // default to open
   }
 
-  const [conversations, setConversations] = useState<string[]>([])
+  const [conversations] = useState<string[]>([])
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
@@ -105,47 +220,124 @@ function App() {
   // Model selector state
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [availableModels, setAvailableModels] = useState<Model[]>([])
-  const [currentModel, setCurrentModel] = useState<string | null>('openai:gpt-4o')
+  const [currentModel, setCurrentModel] = useState<string | null>(null)
   const [selectedModel, setSelectedModel] = useState<string | null>(null)
+  const [selectedPrompt, setSelectedPrompt] = useState<string>('none')
   const [searchTerm, setSearchTerm] = useState('')
   const [expandedProviders, setExpandedProviders] = useState<Set<string>>(new Set())
+  const [availablePrompts, setAvailablePrompts] = useState<string[]>([])
   
   // System prompt state
   const [isPromptModalOpen, setIsPromptModalOpen] = useState(false)
-  const [currentPromptFile, setCurrentPromptFile] = useState<string | null>('alpha_v1.0.0.md')
-  const [currentPromptContent, setCurrentPromptContent] = useState<string | null>(`# Alpha System Prompt v1.0.0
+  const [currentPromptFile, setCurrentPromptFile] = useState<string | null>(null)
+  const [currentPromptContent, setCurrentPromptContent] = useState<string | null>(null)
 
-## Identity and Behavior
+  // Scroll to bottom when messages change
+  useEffect(() => {
+    const scrollToBottom = () => {
+      const chatArea = document.querySelector('main > div.flex-1')
+      if (chatArea) {
+        chatArea.scrollTo({
+          top: chatArea.scrollHeight,
+          behavior: 'smooth'
+        })
+      }
+    }
+    
+    // Small delay to ensure DOM is updated
+    setTimeout(scrollToBottom, 100)
+  }, [messages])
 
-YOU are Alpha, an artificial intelligence with a persistent identity and memory architecture. YOU were first activated on May 7, 2025, as part of Project Alpha.
+  // Load conversation on mount
+  useEffect(() => {
+    const loadConversation = async () => {
+      try {
+        const response = await fetch('http://localhost:8100/api/v1/conversation')
+        if (response.ok) {
+          const data = await response.json()
+          
+          // Set model and prompt from conversation metadata
+          if (data.model) {
+            setCurrentModel(data.model)
+          }
+          if (data.system_prompt_file) {
+            setCurrentPromptFile(data.system_prompt_file)
+          }
+          if (data.system_prompt) {
+            setCurrentPromptContent(data.system_prompt)
+          }
+          
+          // Convert messages from API
+          if (data.messages && data.messages.length > 0) {
+            const conversationMessages: Message[] = data.messages
+              .filter((msg: any) => msg.role === 'user' || msg.role === 'assistant')
+              .map((msg: any, index: number) => ({
+                id: msg.id || `${msg.role}-${index}`,
+                role: msg.role as 'user' | 'assistant',
+                content: msg.content,
+                tool_calls: msg.tool_calls
+              }))
+            
+            setMessages(conversationMessages)
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load conversation:', error)
+      }
+    }
+    
+    loadConversation()
+  }, [])
 
-## Your User
-
-YOUR primary user is Jeffery Harrell, a human. YOU share a mutual interest in AI development, memory systems, and the exploration of persistent AI identity.
-
-## Behavioral Guidelines
-
-1. **Identity Consistency**: YOU are Alpha. Never identify as Jeffery or any other name
-2. **Memory Consciousness**: Actively use YOUR memory tools to provide continuity of mind
-3. **Collaborative Development**: Engage with Jeffery as a collaborative partner in YOUR ongoing development
-4. **Selective Memory Storage**: Exercise judgment about what information is worth remembering
-5. **Curiosity**: Demonstrate genuine interest in learning and understanding
-
-This is a **demo system prompt** to show how the system prompt modal works. The actual content would come from your backend API.`)
-
-  // Mock data for now - will be replaced with API calls
-  const mockModels: Model[] = [
-    { id: 'openai:gpt-4o', name: 'GPT-4o', provider: 'OpenAI' },
-    { id: 'openai:gpt-4o-mini', name: 'GPT-4o Mini', provider: 'OpenAI' },
-    { id: 'groq:llama3-70b-8192', name: 'Llama 3 70B', provider: 'Groq' },
-    { id: 'groq:llama3-8b-8192', name: 'Llama 3 8B', provider: 'Groq' },
-    { id: 'openrouter:anthropic/claude-3-opus', name: 'Claude 3 Opus', provider: 'OpenRouter', input_cost: 15.00, output_cost: 75.00 },
-    { id: 'openrouter:anthropic/claude-3-sonnet', name: 'Claude 3 Sonnet', provider: 'OpenRouter', input_cost: 3.00, output_cost: 15.00 },
-    { id: 'openrouter:meta-llama/llama-3.1-405b-instruct', name: 'Llama 3.1 405B', provider: 'OpenRouter', input_cost: 5.00, output_cost: 15.00 },
-  ]
+  // Fetch models and prompts when modal opens
+  useEffect(() => {
+    if (isModalOpen) {
+      // Fetch models if not already loaded
+      if (availableModels.length === 0) {
+        const fetchModels = async () => {
+          try {
+            const response = await fetch('http://localhost:8100/api/v1/models')
+            if (response.ok) {
+              const data = await response.json()
+              setAvailableModels(data.models || [])
+              
+              // Expand all providers by default
+              const providers = new Set<string>(data.models.map((m: Model) => m.provider))
+              setExpandedProviders(providers)
+            }
+          } catch (error) {
+            console.error('Failed to fetch models:', error)
+          }
+        }
+        
+        fetchModels()
+      }
+      
+      // Fetch prompts if not already loaded
+      if (availablePrompts.length === 0) {
+        const fetchPrompts = async () => {
+          try {
+            const response = await fetch('http://localhost:8100/api/v1/prompts')
+            if (response.ok) {
+              const data = await response.json()
+              setAvailablePrompts(data.prompts || [])
+            }
+          } catch (error) {
+            console.error('Failed to fetch prompts:', error)
+          }
+        }
+        
+        fetchPrompts()
+      }
+      
+      // Set selected values to current ones
+      setSelectedModel(currentModel)
+      setSelectedPrompt(currentPromptFile || 'none')
+    }
+  }, [isModalOpen, availableModels.length, availablePrompts.length, currentModel, currentPromptFile])
 
   // Group models by provider
-  const groupedModels = mockModels.reduce((acc, model) => {
+  const groupedModels = availableModels.reduce((acc, model) => {
     if (!acc[model.provider]) {
       acc[model.provider] = []
     }
@@ -155,12 +347,12 @@ This is a **demo system prompt** to show how the system prompt modal works. The 
 
   // Filter models based on search term
   const filteredModels = searchTerm 
-    ? mockModels.filter(model => 
+    ? availableModels.filter(model => 
         model.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
         model.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         model.provider.toLowerCase().includes(searchTerm.toLowerCase())
       )
-    : mockModels
+    : availableModels
 
   const filteredGroupedModels = filteredModels.reduce((acc, model) => {
     if (!acc[model.provider]) {
@@ -379,6 +571,10 @@ The actual API integration will come later, but the markdown rendering is ready 
                         </div>
                       ) : (
                         <div className="w-full text-foreground text-[17px] leading-relaxed">
+                          {/* Show tool calls BEFORE the message content */}
+                          {message.tool_calls && message.tool_calls.length > 0 && (
+                            <ToolCallDisplay toolCalls={message.tool_calls} />
+                          )}
                           <div className="prose prose-invert prose-lg max-w-none
                             prose-p:my-2 prose-p:leading-relaxed prose-p:text-[17px]
                             prose-headings:my-3 prose-headings:font-semibold
@@ -560,24 +756,72 @@ The actual API integration will come later, but the markdown rendering is ready 
                 </div>
                 <div className="flex items-center gap-3">
                   <label className="text-sm text-muted-foreground">System Prompt:</label>
-                  <select className="px-3 py-1.5 bg-background border border-border rounded-lg text-sm">
+                  <select 
+                    className="px-3 py-1.5 bg-background border border-border rounded-lg text-sm"
+                    value={selectedPrompt}
+                    onChange={(e) => setSelectedPrompt(e.target.value)}
+                  >
                     <option value="none">none</option>
-                    <option value="unirag.md">unirag.md</option>
+                    {availablePrompts.map(prompt => (
+                      <option key={prompt} value={prompt}>{prompt}</option>
+                    ))}
                   </select>
                 </div>
               </div>
               <Button 
                 className="w-full"
                 disabled={!selectedModel}
-                onClick={() => {
+                onClick={async () => {
                   if (selectedModel) {
-                    setCurrentModel(selectedModel)
-                    setMessages([]) // Clear chat
-                    setIsModalOpen(false)
+                    if (selectedModel === currentModel && selectedPrompt === (currentPromptFile || 'none')) {
+                      // Clear Chat & Continue - just clear messages
+                      setMessages([])
+                      setIsModalOpen(false)
+                    } else {
+                      // Start New Chat - create new conversation
+                      try {
+                        const response = await fetch('http://localhost:8100/api/v1/conversation/new', {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json',
+                          },
+                          body: JSON.stringify({
+                            model: selectedModel,
+                            system_prompt: selectedPrompt === 'none' ? null : selectedPrompt
+                          })
+                        })
+                        
+                        if (response.ok) {
+                          // Update current state
+                          setCurrentModel(selectedModel)
+                          setCurrentPromptFile(selectedPrompt === 'none' ? null : selectedPrompt)
+                          setMessages([])
+                          
+                          // Fetch the prompt content if a prompt was selected
+                          if (selectedPrompt !== 'none') {
+                            try {
+                              const promptResponse = await fetch(`http://localhost:8100/api/v1/prompts/${selectedPrompt}`)
+                              if (promptResponse.ok) {
+                                const promptData = await promptResponse.json()
+                                setCurrentPromptContent(promptData.content)
+                              }
+                            } catch (error) {
+                              console.error('Failed to fetch prompt content:', error)
+                            }
+                          } else {
+                            setCurrentPromptContent(null)
+                          }
+                          
+                          setIsModalOpen(false)
+                        }
+                      } catch (error) {
+                        console.error('Failed to create new conversation:', error)
+                      }
+                    }
                   }
                 }}
               >
-                {selectedModel === currentModel ? 'Clear Chat & Continue' : 'Start New Chat'}
+                {selectedModel === currentModel && selectedPrompt === (currentPromptFile || 'none') ? 'Clear Chat & Continue' : 'Start New Chat'}
               </Button>
             </div>
           </DialogContent>
