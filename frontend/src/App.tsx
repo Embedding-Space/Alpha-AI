@@ -100,6 +100,7 @@ function App() {
   const [conversations, setConversations] = useState<string[]>([])
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
+  const [isStreaming, setIsStreaming] = useState(false)
   
   // Model selector state
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -414,30 +415,49 @@ The actual API integration will come later, but the markdown rendering is ready 
                 />
               </form>
               {currentModel && (
-                <div className="flex items-center gap-2 mt-2 px-2">
-                  <span className="text-[11px] text-muted-foreground">{currentModel}</span>
+                <div className="flex items-center justify-between mt-2 px-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-muted-foreground">{currentModel}</span>
+                    <button
+                      type="button"
+                      className="text-muted-foreground hover:text-foreground transition-colors"
+                      onClick={() => navigator.clipboard.writeText(currentModel)}
+                      title="Copy model ID"
+                    >
+                      <Copy className="h-3 w-3" />
+                    </button>
+                    {currentPromptFile && (
+                      <>
+                        <span className="text-[11px] text-muted-foreground">•</span>
+                        <span className="text-[11px] text-muted-foreground">{currentPromptFile}</span>
+                        <button
+                          type="button"
+                          className="text-muted-foreground hover:text-foreground transition-colors"
+                          onClick={() => setIsPromptModalOpen(true)}
+                          title="View system prompt"
+                        >
+                          <FileText className="h-3 w-3" />
+                        </button>
+                      </>
+                    )}
+                  </div>
                   <button
                     type="button"
-                    className="text-muted-foreground hover:text-foreground transition-colors"
-                    onClick={() => navigator.clipboard.writeText(currentModel)}
-                    title="Copy model ID"
+                    className={`text-[11px] transition-colors ${
+                      isStreaming 
+                        ? 'text-foreground hover:text-destructive cursor-pointer' 
+                        : 'text-muted-foreground/50 cursor-default'
+                    }`}
+                    onClick={() => {
+                      if (isStreaming) {
+                        // TODO: Implement stop functionality
+                        setIsStreaming(false)
+                      }
+                    }}
+                    disabled={!isStreaming}
                   >
-                    <Copy className="h-3 w-3" />
+                    stop
                   </button>
-                  {currentPromptFile && (
-                    <>
-                      <span className="text-[11px] text-muted-foreground">•</span>
-                      <span className="text-[11px] text-muted-foreground">{currentPromptFile}</span>
-                      <button
-                        type="button"
-                        className="text-muted-foreground hover:text-foreground transition-colors"
-                        onClick={() => setIsPromptModalOpen(true)}
-                        title="View system prompt"
-                      >
-                        <FileText className="h-3 w-3" />
-                      </button>
-                    </>
-                  )}
                 </div>
               )}
             </div>
