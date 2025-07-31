@@ -216,6 +216,7 @@ function App() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
+  const [abortController, setAbortController] = useState<AbortController | null>(null)
   
   // Model selector state
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -414,17 +415,19 @@ function App() {
     },
   }
 
-  const handleSendMessage = () => {
-    if (!input.trim()) return
+  const handleSendMessage = async () => {
+    if (!input.trim() || !currentModel) return
     
-    const newMessage: Message = {
+    const messageText = input
+    const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
-      content: input
+      content: messageText
     }
     
-    setMessages([...messages, newMessage])
+    setMessages([...messages, userMessage])
     setInput('')
+    setIsStreaming(true)
     
     // Reset textarea height after sending
     const textarea = document.querySelector('textarea')
@@ -432,34 +435,159 @@ function App() {
       textarea.style.height = ''
     }
     
-    // Simulate assistant response
-    setTimeout(() => {
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: `# Hello! 👋
-
-I can render **markdown** beautifully!
-
-## Features:
-- **Bold text** and *italic text*
-- \`inline code\` 
-- [Links](https://example.com)
-- Lists (like this one!)
-
-\`\`\`javascript
-// Code blocks too!
-function greet() {
-  console.log("Hello, Alpha AI!");
-}
-\`\`\`
-
-> Even blockquotes work great!
-
-The actual API integration will come later, but the markdown rendering is ready to go! 🎉`
+    // Create new abort controller for this request
+    const controller = new AbortController()
+    setAbortController(controller)
+    
+    // Create assistant message that we'll update as chunks arrive
+    const assistantMessage: Message = {
+      id: (Date.now() + 1).toString(),
+      role: 'assistant',
+      content: '',
+      tool_calls: []
+    }
+    
+    try {
+      console.log('Sending message:', messageText)
+      const response = await fetch('http://localhost:8100/api/v1/chat/stream', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ message: messageText }),
+        signal: controller.signal
+      })
+      
+      console.log('Response status:', response.status)
+      console.log('Response headers:', response.headers)
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
       }
+      
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
+      
+      if (!reader) {
+        throw new Error('No reader available')
+      }
+      
+      console.log('Starting to read stream...')
+      
       setMessages(prev => [...prev, assistantMessage])
-    }, 1000)
+      
+      let buffer = ''
+      let accumulatedContent = ''
+      const pendingToolCalls: Record<string, ToolCall> = {}
+      
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) {
+          console.log('Stream ended')
+          break
+        }
+        
+        const chunk = decoder.decode(value, { stream: true })
+        console.log('Received chunk:', chunk)
+        
+        buffer += chunk
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+        
+        for (const line of lines) {
+          if (line.trim() === '') continue
+          
+          console.log('Processing line:', line)
+          
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6)
+            if (data === '[DONE]') {
+              console.log('Received [DONE] signal')
+              continue
+            }
+            
+            try {
+              const event = JSON.parse(data)
+              console.log('Parsed event:', event)
+              
+              if (event.type === 'text_delta') {
+                accumulatedContent += event.content
+                console.log('Accumulated content:', accumulatedContent)
+                // Update the assistant message with accumulated content
+                setMessages(prev => prev.map(msg => 
+                  msg.id === assistantMessage.id 
+                    ? { ...msg, content: accumulatedContent }
+                    : msg
+                ))
+              } else if (event.type === 'tool_call') {
+                const toolCall: ToolCall = {
+                  tool_name: event.tool_name,
+                  args: event.args,
+                  tool_call_id: event.tool_call_id
+                }
+                pendingToolCalls[event.tool_call_id] = toolCall
+              } else if (event.type === 'tool_return') {
+                const toolCall = pendingToolCalls[event.tool_call_id]
+                if (toolCall) {
+                  const toolResponse: ToolResponse = {
+                    tool_name: event.tool_name,
+                    content: event.content,
+                    tool_call_id: event.tool_call_id
+                  }
+                  
+                  // Update the assistant message with the tool call pair
+                  setMessages(prev => prev.map(msg => 
+                    msg.id === assistantMessage.id 
+                      ? { 
+                          ...msg, 
+                          tool_calls: [...(msg.tool_calls || []), [toolCall, toolResponse]]
+                        }
+                      : msg
+                  ))
+                  
+                  delete pendingToolCalls[event.tool_call_id]
+                }
+              } else if (event.type === 'done') {
+                console.log('Stream completed')
+                // Stream is done, no action needed
+              } else if (event.type === 'error') {
+                console.error('Stream error:', event.error || event.content)
+                setMessages(prev => prev.map(msg => 
+                  msg.id === assistantMessage.id 
+                    ? { ...msg, content: accumulatedContent + '\n\n*Error: ' + (event.error || event.content) + '*' }
+                    : msg
+                ))
+              }
+            } catch (e) {
+              console.error('Error parsing SSE data:', e)
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Failed to send message:', error)
+      
+      // Don't show error for user-initiated abort
+      if (error instanceof Error && error.name === 'AbortError') {
+        // Add a subtle message that generation was stopped
+        setMessages(prev => prev.map(msg => 
+          msg.id === assistantMessage.id && msg.content
+            ? { ...msg, content: msg.content + '\n\n*[Generation stopped]*' }
+            : msg
+        ))
+      } else {
+        // Add error message for other errors
+        const errorMessage: Message = {
+          id: (Date.now() + 2).toString(),
+          role: 'assistant',
+          content: `*Error: Failed to send message. ${error instanceof Error ? error.message : 'Unknown error'}*`
+        }
+        setMessages(prev => [...prev, errorMessage])
+      }
+    } finally {
+      setIsStreaming(false)
+      setAbortController(null)
+    }
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -608,6 +736,7 @@ The actual API integration will come later, but the markdown rendering is ready 
                   placeholder="Message Alpha AI"
                   className="w-full px-4 py-3 rounded-2xl bg-muted border border-border focus:outline-none focus:ring-2 focus:ring-ring resize-none overflow-hidden min-h-[48px]"
                   rows={1}
+                  disabled={isStreaming || !currentModel}
                 />
               </form>
               {currentModel && (
@@ -645,8 +774,8 @@ The actual API integration will come later, but the markdown rendering is ready 
                         : 'text-muted-foreground/50 cursor-default'
                     }`}
                     onClick={() => {
-                      if (isStreaming) {
-                        // TODO: Implement stop functionality
+                      if (isStreaming && abortController) {
+                        abortController.abort()
                         setIsStreaming(false)
                       }
                     }}
