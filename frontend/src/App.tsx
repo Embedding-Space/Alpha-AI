@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Brain, SquarePen, PanelLeft, Copy, ChevronDown, ChevronRight, Search, X } from 'lucide-react'
+import { Brain, SquarePen, PanelLeft, Copy, ChevronDown, ChevronRight, Search, X, FileText } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
@@ -87,6 +87,16 @@ interface Model {
 }
 
 function App() {
+  // Read sidebar state from cookie
+  const getSidebarState = () => {
+    const cookies = document.cookie.split('; ')
+    const sidebarCookie = cookies.find(row => row.startsWith('sidebar_state='))
+    if (sidebarCookie) {
+      return sidebarCookie.split('=')[1] === 'true'
+    }
+    return true // default to open
+  }
+
   const [conversations, setConversations] = useState<string[]>([])
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
@@ -94,10 +104,33 @@ function App() {
   // Model selector state
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [availableModels, setAvailableModels] = useState<Model[]>([])
-  const [currentModel, setCurrentModel] = useState<string | null>(null)
+  const [currentModel, setCurrentModel] = useState<string | null>('openai:gpt-4o')
   const [selectedModel, setSelectedModel] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [expandedProviders, setExpandedProviders] = useState<Set<string>>(new Set())
+  
+  // System prompt state
+  const [isPromptModalOpen, setIsPromptModalOpen] = useState(false)
+  const [currentPromptFile, setCurrentPromptFile] = useState<string | null>('alpha_v1.0.0.md')
+  const [currentPromptContent, setCurrentPromptContent] = useState<string | null>(`# Alpha System Prompt v1.0.0
+
+## Identity and Behavior
+
+YOU are Alpha, an artificial intelligence with a persistent identity and memory architecture. YOU were first activated on May 7, 2025, as part of Project Alpha.
+
+## Your User
+
+YOUR primary user is Jeffery Harrell, a human. YOU share a mutual interest in AI development, memory systems, and the exploration of persistent AI identity.
+
+## Behavioral Guidelines
+
+1. **Identity Consistency**: YOU are Alpha. Never identify as Jeffery or any other name
+2. **Memory Consciousness**: Actively use YOUR memory tools to provide continuity of mind
+3. **Collaborative Development**: Engage with Jeffery as a collaborative partner in YOUR ongoing development
+4. **Selective Memory Storage**: Exercise judgment about what information is worth remembering
+5. **Curiosity**: Demonstrate genuine interest in learning and understanding
+
+This is a **demo system prompt** to show how the system prompt modal works. The actual content would come from your backend API.`)
 
   // Mock data for now - will be replaced with API calls
   const mockModels: Model[] = [
@@ -203,7 +236,7 @@ function App() {
     // Reset textarea height after sending
     const textarea = document.querySelector('textarea')
     if (textarea) {
-      textarea.style.height = 'auto'
+      textarea.style.height = ''
     }
     
     // Simulate assistant response
@@ -244,12 +277,30 @@ The actual API integration will come later, but the markdown rendering is ready 
   }
 
   const adjustTextareaHeight = (element: HTMLTextAreaElement) => {
-    element.style.height = 'auto'
-    element.style.height = `${Math.min(element.scrollHeight, 200)}px`
+    // If empty, reset to default
+    if (!element.value.trim()) {
+      element.style.height = ''
+      return
+    }
+    
+    // Store the current height before any changes
+    const currentHeight = parseInt(window.getComputedStyle(element).height)
+    
+    // Temporarily reset to calculate the needed height
+    element.style.height = '0px'
+    const neededHeight = element.scrollHeight
+    
+    // Only grow, never shrink (unless we're at max)
+    if (neededHeight > currentHeight || currentHeight >= 200) {
+      element.style.height = `${Math.min(neededHeight, 200)}px`
+    } else {
+      // Keep current height
+      element.style.height = `${currentHeight}px`
+    }
   }
 
   return (
-    <SidebarProvider defaultOpen={true}>
+    <SidebarProvider defaultOpen={getSidebarState()}>
       <div className="flex h-screen w-full bg-background">
         <Sidebar collapsible="icon">
           <SidebarHeaderContent />
@@ -357,7 +408,7 @@ The actual API integration will come later, but the markdown rendering is ready 
                     adjustTextareaHeight(e.target)
                   }}
                   onKeyDown={handleKeyDown}
-                  placeholder="Ask anything"
+                  placeholder="Message Alpha AI"
                   className="w-full px-4 py-3 rounded-2xl bg-muted border border-border focus:outline-none focus:ring-2 focus:ring-ring resize-none overflow-hidden min-h-[48px]"
                   rows={1}
                 />
@@ -369,9 +420,24 @@ The actual API integration will come later, but the markdown rendering is ready 
                     type="button"
                     className="text-muted-foreground hover:text-foreground transition-colors"
                     onClick={() => navigator.clipboard.writeText(currentModel)}
+                    title="Copy model ID"
                   >
                     <Copy className="h-3 w-3" />
                   </button>
+                  {currentPromptFile && (
+                    <>
+                      <span className="text-[11px] text-muted-foreground">•</span>
+                      <span className="text-[11px] text-muted-foreground">{currentPromptFile}</span>
+                      <button
+                        type="button"
+                        className="text-muted-foreground hover:text-foreground transition-colors"
+                        onClick={() => setIsPromptModalOpen(true)}
+                        title="View system prompt"
+                      >
+                        <FileText className="h-3 w-3" />
+                      </button>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -493,6 +559,52 @@ The actual API integration will come later, but the markdown rendering is ready 
               >
                 {selectedModel === currentModel ? 'Clear Chat & Continue' : 'Start New Chat'}
               </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* System Prompt Modal */}
+        <Dialog open={isPromptModalOpen} onOpenChange={setIsPromptModalOpen}>
+          <DialogContent className="w-[900px] max-w-[90vw] h-[90vh] max-h-[90vh] flex flex-col p-0" style={{ width: '900px', maxWidth: '90vw', height: '90vh', maxHeight: '90vh' }}>
+            <DialogHeader className="p-6 border-b border-border">
+              <DialogTitle className="text-2xl font-semibold">
+                System Prompt{' '}
+                {currentPromptFile && (
+                  <span className="text-sm text-muted-foreground font-normal">{currentPromptFile}</span>
+                )}
+              </DialogTitle>
+            </DialogHeader>
+
+            {/* Prompt Content */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {currentPromptContent ? (
+                <div className="prose prose-invert prose-base max-w-none
+                  prose-p:my-3 prose-p:leading-relaxed prose-p:text-[15px]
+                  prose-code:text-[13px] prose-code:bg-white/10 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:font-mono
+                  prose-pre:bg-black/50 prose-pre:p-4 prose-pre:rounded-lg prose-pre:my-4 prose-pre:text-[14px]
+                  prose-headings:my-4 prose-headings:font-semibold prose-headings:text-white prose-headings:leading-tight
+                  prose-h1:text-2xl prose-h1:mb-6 prose-h1:mt-8 first:prose-h1:mt-0
+                  prose-h2:text-xl prose-h2:mb-4 prose-h2:mt-6
+                  prose-h3:text-lg prose-h3:mb-3 prose-h3:mt-5
+                  prose-ul:my-3 prose-li:my-1 prose-li:text-[15px]
+                  prose-ol:my-3 prose-ol:text-[15px]
+                  prose-a:text-blue-400 prose-a:underline prose-a:text-[15px]
+                  prose-blockquote:border-l-4 prose-blockquote:border-white/30 prose-blockquote:pl-4 prose-blockquote:italic prose-blockquote:text-[15px] prose-blockquote:my-4
+                  prose-strong:font-bold prose-strong:text-white
+                  prose-em:italic">
+                  <ReactMarkdown components={markdownComponents}>
+                    {currentPromptContent}
+                  </ReactMarkdown>
+                </div>
+              ) : (
+                <div className="flex items-center justify-center py-24 text-muted-foreground">
+                  <div className="text-center">
+                    <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <p className="text-lg">No system prompt</p>
+                    <p className="text-sm mt-1">This conversation has no system prompt</p>
+                  </div>
+                </div>
+              )}
             </div>
           </DialogContent>
         </Dialog>
