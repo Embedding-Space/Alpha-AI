@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Brain, SquarePen, PanelLeft, Copy, ChevronDown, ChevronRight, Search, FileText, Code } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
@@ -217,6 +217,9 @@ function App() {
   const [isStreaming, setIsStreaming] = useState(false)
   const [abortController, setAbortController] = useState<AbortController | null>(null)
   
+  // Ref for the textarea
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  
   // Model selector state
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [availableModels, setAvailableModels] = useState<Model[]>([])
@@ -415,7 +418,7 @@ function App() {
   }
 
   const handleSendMessage = async () => {
-    if (!input.trim() || !currentModel) return
+    if (!input.trim() || !currentModel || isStreaming) return
     
     const messageText = input
     const userMessage: Message = {
@@ -428,10 +431,9 @@ function App() {
     setInput('')
     setIsStreaming(true)
     
-    // Reset textarea height after sending
-    const textarea = document.querySelector('textarea')
-    if (textarea) {
-      textarea.style.height = ''
+    // Reset textarea height
+    if (textareaRef.current) {
+      textareaRef.current.style.height = ''
     }
     
     // Create new abort controller for this request
@@ -726,6 +728,7 @@ function App() {
             <div className="max-w-3xl mx-auto px-4 py-4">
               <form onSubmit={(e) => { e.preventDefault(); handleSendMessage(); }}>
                 <textarea
+                  ref={textareaRef}
                   value={input}
                   onChange={(e) => {
                     setInput(e.target.value)
@@ -735,7 +738,7 @@ function App() {
                   placeholder="Message Alpha AI"
                   className="w-full px-4 py-3 rounded-2xl bg-muted border border-border focus:outline-none focus:ring-2 focus:ring-ring resize-none overflow-hidden min-h-[48px]"
                   rows={1}
-                  disabled={isStreaming || !currentModel}
+                  disabled={!currentModel}
                 />
               </form>
               {currentModel && (
@@ -910,7 +913,7 @@ function App() {
                         },
                         body: JSON.stringify({
                           model: selectedModel,
-                          system_prompt: selectedPrompt === 'none' ? null : selectedPrompt
+                          system_prompt: selectedPrompt === 'none' ? '' : selectedPrompt
                         })
                       })
                       
@@ -936,6 +939,11 @@ function App() {
                         }
                         
                         setIsModalOpen(false)
+                      } else {
+                        // Log the error response
+                        const errorText = await response.text()
+                        console.error('Failed to create conversation:', response.status, errorText)
+                        alert(`Failed to create conversation: ${errorText}`)
                       }
                     } catch (error) {
                       console.error('Failed to create new conversation:', error)

@@ -367,11 +367,11 @@ async def new_conversation(request: Dict[str, str], db: Session = Depends(get_db
     if not model:
         raise HTTPException(status_code=400, detail="Model is required")
     
-    prompt_name = request.get("system_prompt", "none")
+    prompt_name = request.get("system_prompt", "")
     system_prompt = ""
     
-    # Load the system prompt content if specified
-    if prompt_name != "none":
+    # Load the system prompt content if a filename is specified
+    if prompt_name:  # If not empty string
         prompt_file = Path(f"/app/system_prompts/{prompt_name}")
         if prompt_file.exists():
             try:
@@ -383,7 +383,7 @@ async def new_conversation(request: Dict[str, str], db: Session = Depends(get_db
     await conversation_manager.create_new_conversation(
         db=db,
         model=model,
-        system_prompt_filename=prompt_name if prompt_name != "none" else None,
+        system_prompt_filename=prompt_name if prompt_name else None,
         system_prompt_content=system_prompt if system_prompt else None
     )
     
