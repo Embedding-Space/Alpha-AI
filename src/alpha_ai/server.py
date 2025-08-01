@@ -437,6 +437,26 @@ async def get_conversation(limit: int = 50, db: Session = Depends(get_db)):
             system_prompt=None
         )
     
+    # First, collect all tool responses from ModelRequest messages
+    tool_responses = {}
+    for msg in current_conv.history[-limit:]:
+        if isinstance(msg, ModelRequest):
+            for part in msg.parts:
+                if isinstance(part, ToolReturnPart):
+                    # Convert content to proper JSON string if it's a dict/list
+                    content = part.content
+                    if isinstance(content, (dict, list)):
+                        import json
+                        content = json.dumps(content)
+                    else:
+                        content = str(content)
+                    
+                    tool_responses[part.tool_call_id] = ToolReturn(
+                        tool_name=part.tool_name,
+                        content=content,
+                        tool_call_id=part.tool_call_id
+                    )
+    
     # Convert PydanticAI messages to our API format
     messages = []
     for msg in current_conv.history[-limit:]:
@@ -466,14 +486,25 @@ async def get_conversation(limit: int = 50, db: Session = Depends(get_db)):
                 if isinstance(part, TextPart):
                     text_parts.append(part.content)
                 elif isinstance(part, ToolCallPart):
-                    # Need to find matching tool response
+                    # Handle args serialization
+                    args = part.args
+                    if isinstance(args, str):
+                        try:
+                            import json
+                            args = json.loads(args)
+                        except json.JSONDecodeError:
+                            args = {"value": args}
+                    elif not isinstance(args, dict):
+                        args = {"value": str(args)}
+                    
                     tool_call = ToolCall(
                         tool_name=part.tool_name,
-                        args=part.args if isinstance(part.args, dict) else {"value": str(part.args)},
+                        args=args,
                         tool_call_id=part.tool_call_id
                     )
-                    # TODO: Match with tool responses
-                    tool_calls.append((tool_call, None))
+                    # Find matching response
+                    tool_response = tool_responses.get(part.tool_call_id)
+                    tool_calls.append((tool_call, tool_response))
             
             if text_parts or tool_calls:
                 messages.append(MessageWithToolCalls(

@@ -146,51 +146,96 @@ function ToolCallDisplay({ toolCalls }: { toolCalls: Array<[ToolCall, ToolRespon
                         padding: '12px',
                       }}
                     >
-                      {JSON.stringify({
-                        tool_name: call.tool_name,
-                        args: call.args
-                      }, null, 2)}
+                      {(() => {
+                        // If args.value is a string, try to parse it as JSON
+                        let displayArgs = call.args;
+                        if (call.args && call.args.value && typeof call.args.value === 'string') {
+                          try {
+                            displayArgs = JSON.parse(call.args.value);
+                          } catch {
+                            // If parsing fails, just use the original args
+                            displayArgs = call.args;
+                          }
+                        }
+                        
+                        return JSON.stringify({
+                          tool_name: call.tool_name,
+                          args: displayArgs
+                        }, null, 2);
+                      })()}
                     </SyntaxHighlighter>
                   </div>
                 </div>
                 
                 {/* Response */}
-                <div>
-                  <div className="text-xs font-medium text-muted-foreground mb-1">RESPONSE</div>
-                  <div className="rounded-md overflow-hidden">
-                    <SyntaxHighlighter
-                      language="json"
-                      style={oneDark}
-                      customStyle={{
-                        margin: 0,
-                        fontSize: '12px',
-                        padding: '12px',
-                      }}
-                    >
-                      {(() => {
-                        try {
-                          // Try to parse the content as JSON first
-                          const parsed = JSON.parse(response.content);
-                          return JSON.stringify(parsed, null, 2);
-                        } catch {
-                          // If it's not valid JSON, try to convert Python dict to JSON
+                {response && (
+                  <div>
+                    <div className="text-xs font-medium text-muted-foreground mb-1">RESPONSE</div>
+                    <div className="rounded-md overflow-hidden">
+                      <SyntaxHighlighter
+                        language="json"
+                        style={oneDark}
+                        customStyle={{
+                          margin: 0,
+                          fontSize: '12px',
+                          padding: '12px',
+                        }}
+                      >
+                        {(() => {
+                          let content = response.content;
+                          
+                          // First, try to parse as JSON
                           try {
-                            const jsonString = response.content
-                              .replace(/'/g, '"')  // Replace single quotes with double quotes
-                              .replace(/True/g, 'true')  // Python True to JSON true
-                              .replace(/False/g, 'false')  // Python False to JSON false
-                              .replace(/None/g, 'null');  // Python None to JSON null
-                            const parsed = JSON.parse(jsonString);
+                            const parsed = JSON.parse(content);
                             return JSON.stringify(parsed, null, 2);
                           } catch {
-                            // If all else fails, just show the raw content
-                            return JSON.stringify({ content: response.content }, null, 2);
+                            // Not valid JSON
                           }
-                        }
-                      })()}
-                    </SyntaxHighlighter>
+                          
+                          // Check if it's a double-encoded JSON string
+                          if (typeof content === 'string' && 
+                              (content.startsWith('"[') || content.startsWith('"{')) && 
+                              (content.endsWith(']"') || content.endsWith('}"'))) {
+                            try {
+                              // Parse once to remove outer quotes
+                              const unquoted = JSON.parse(content);
+                              // Parse again to get the actual object
+                              const parsed = JSON.parse(unquoted);
+                              return JSON.stringify(parsed, null, 2);
+                            } catch {
+                              // If double parsing fails, continue
+                            }
+                          }
+                          
+                          // Check if it's a Python dict/list string
+                          if (typeof content === 'string' && 
+                              ((content.startsWith('[{') && content.endsWith('}]')) ||
+                               (content.startsWith('{') && content.endsWith('}')))) {
+                            try {
+                              // Convert Python dict to JSON
+                              const jsonString = content
+                                .replace(/'/g, '"')  // Replace single quotes with double quotes
+                                .replace(/True/g, 'true')  // Python True to JSON true
+                                .replace(/False/g, 'false')  // Python False to JSON false
+                                .replace(/None/g, 'null')  // Python None to JSON null
+                                .replace(/\\"/g, '\\"')  // Escape any quotes in strings
+                                .replace(/\\\\/g, '\\\\'); // Escape backslashes
+                              
+                              const parsed = JSON.parse(jsonString);
+                              return JSON.stringify(parsed, null, 2);
+                            } catch (e) {
+                              // If parsing fails, show raw content
+                              console.error('Failed to parse Python dict:', e);
+                            }
+                          }
+                          
+                          // Otherwise just show the raw content
+                          return content;
+                        })()}
+                      </SyntaxHighlighter>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             )}
           </div>
@@ -715,35 +760,39 @@ function App() {
                           {message.tool_calls && message.tool_calls.length > 0 && (
                             <ToolCallDisplay toolCalls={message.tool_calls} />
                           )}
-                          {/* Assistant message card */}
-                          <div className="bg-sidebar rounded-2xl px-4 py-3 text-foreground text-[17px] leading-relaxed">
-                            {/* Content - either markdown or raw */}
-                            {rawMarkdownIds.has(message.id) ? (
-                              <pre className="text-sm font-mono whitespace-pre-wrap break-words">
-                                {message.content}
-                              </pre>
-                            ) : (
-                              <div className="markdown-body">
-                                <ReactMarkdown components={markdownComponents}>
-                                  {message.content}
-                                </ReactMarkdown>
+                          {/* Assistant message card - only show if there's content */}
+                          {message.content && (
+                            <>
+                              <div className="bg-sidebar rounded-2xl px-4 py-3 text-foreground text-[17px] leading-relaxed">
+                                {/* Content - either markdown or raw */}
+                                {rawMarkdownIds.has(message.id) ? (
+                                  <pre className="text-sm font-mono whitespace-pre-wrap break-words">
+                                    {message.content}
+                                  </pre>
+                                ) : (
+                                  <div className="markdown-body">
+                                    <ReactMarkdown components={markdownComponents}>
+                                      {message.content}
+                                    </ReactMarkdown>
+                                  </div>
+                                )}
                               </div>
-                            )}
-                          </div>
-                          {/* Action buttons below the card */}
-                          <div className="flex justify-end gap-2 mt-2">
-                            <button
-                              onClick={() => toggleRawMarkdown(message.id)}
-                              className="p-1.5 text-muted-foreground hover:text-foreground rounded hover:bg-muted/50 transition-colors"
-                              title={rawMarkdownIds.has(message.id) ? "Show formatted" : "Show raw markdown"}
-                            >
-                              {rawMarkdownIds.has(message.id) ? (
-                                <Eye className="w-4 h-4" />
-                              ) : (
-                                <EyeOff className="w-4 h-4" />
-                              )}
-                            </button>
-                          </div>
+                              {/* Action buttons below the card */}
+                              <div className="flex justify-end gap-2 mt-2">
+                                <button
+                                  onClick={() => toggleRawMarkdown(message.id)}
+                                  className="p-1.5 text-muted-foreground hover:text-foreground rounded hover:bg-muted/50 transition-colors"
+                                  title={rawMarkdownIds.has(message.id) ? "Show formatted" : "Show raw markdown"}
+                                >
+                                  {rawMarkdownIds.has(message.id) ? (
+                                    <Eye className="w-4 h-4" />
+                                  ) : (
+                                    <EyeOff className="w-4 h-4" />
+                                  )}
+                                </button>
+                              </div>
+                            </>
+                          )}
                         </div>
                       )}
                     </div>
