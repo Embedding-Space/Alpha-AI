@@ -200,92 +200,126 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
             # Send initial event
             yield f"data: {json.dumps({'type': 'start', 'model': current_conv.model})}\n\n"
             
-            # Use agent.iter() to walk through the execution graph
-            async with current_conv._agent.iter(request.message, message_history=current_conv.history) as agent_run:
-                # Initialize current_text_parts at the beginning of streaming
-                current_text_parts = []
-                
-                async for node in agent_run:
-                    
-                    if Agent.is_user_prompt_node(node):
-                        # Skip user prompt nodes - we already know what the user said
-                        continue
-                        
-                    elif Agent.is_model_request_node(node):
-                        # The model is generating a response - stream it!
-                        async with node.stream(agent_run.ctx) as stream:
-                            async for event in stream:
-                                if isinstance(event, PartStartEvent):
-                                    # Start of a new part - check if it has content
-                                    # Check if this is a TextPart with initial content
-                                    if isinstance(event.part, TextPart) and event.part.content:
-                                        current_text_parts.append(event.part.content)
-                                        yield f"data: {json.dumps({'type': 'text_delta', 'content': event.part.content})}\n\n"
-                                    continue
-                                elif isinstance(event, PartDeltaEvent):
-                                    if isinstance(event.delta, TextPartDelta):
-                                        # Stream text delta
-                                        content = event.delta.content_delta
-                                        current_text_parts.append(content)
-                                        yield f"data: {json.dumps({'type': 'text_delta', 'content': content})}\n\n"
-                                    elif isinstance(event.delta, ToolCallPartDelta):
-                                        # Tool call is being constructed - we'll handle it in CallToolsNode
-                                        pass
-                                        
-                    elif Agent.is_call_tools_node(node):
-                        # The model wants to call tools
-                        
-                        async with node.stream(agent_run.ctx) as stream:
-                            tool_name_map = {}  # Map tool_call_id to tool_name for responses
-                            
-                            async for event in stream:
-                                if isinstance(event, FunctionToolCallEvent):
-                                    # Tool is being called
-                                    # Debug: log what we're getting
-                                    print(f"DEBUG STREAMING: Tool call {event.part.tool_name} - event.part.args type: {type(event.part.args)}, value: {event.part.args}")
-                                    
-                                    # Handle case where args might be a JSON string
-                                    args = event.part.args
-                                    if isinstance(args, str):
-                                        try:
-                                            args = json.loads(args)
-                                        except json.JSONDecodeError:
-                                            # If it's not valid JSON, wrap it in a dict
-                                            args = {"value": args}
-                                    elif not isinstance(args, dict):
-                                        # If it's not a dict or string, convert to dict
-                                        args = {"value": str(args)}
-                                    
-                                    # Note: We'll save to database after streaming completes
-                                    
-                                    # Track tool name for response
-                                    tool_name_map[event.part.tool_call_id] = event.part.tool_name
-                                    
-                                    # Stream tool call to client
-                                    tool_data = {
-                                        'tool_name': event.part.tool_name,
-                                        'args': args,
-                                        'tool_call_id': event.part.tool_call_id
-                                    }
-                                    yield f"data: {json.dumps({'type': 'tool_call', **tool_data})}\n\n"
-                                    
-                                elif isinstance(event, FunctionToolResultEvent):
-                                    # Tool returned a result
-                                    tool_name = tool_name_map.get(event.tool_call_id, "unknown")
-                                    
-                                    # Note: We'll save to database after streaming completes
-                                    
-                                    # Stream tool response to client
-                                    yield f"data: {json.dumps({'type': 'tool_return', 'tool_call_id': event.tool_call_id, 'content': str(event.result.content)})}\n\n"
-                    
-                    elif Agent.is_end_node(node):
-                        # We've reached the end
-                        break
+            # Initialize current_text_parts at the beginning of streaming
+            current_text_parts = []
             
-            # The conversation's history is already updated by the agent run
-            # Get the result (it's a property, not async)
-            result = agent_run.result
-            current_conv.history.extend(result.new_messages())
+            # Handle context manager for toolsets
+            if current_conv._toolsets:
+                async with current_conv._agent as agent_in_context:
+                    # Use agent.iter() to walk through the execution graph
+                    async with agent_in_context.iter(request.message, message_history=current_conv.history) as agent_run:
+                        async for node in agent_run:
+                            
+                            if Agent.is_user_prompt_node(node):
+                                # Skip user prompt nodes - we already know what the user said
+                                continue
+                                
+                            elif Agent.is_model_request_node(node):
+                                # The model is generating a response - stream it!
+                                async with node.stream(agent_run.ctx) as stream:
+                                    async for event in stream:
+                                        if isinstance(event, PartStartEvent):
+                                            # Start of a new part - check if it has content
+                                            # Check if this is a TextPart with initial content
+                                            if isinstance(event.part, TextPart) and event.part.content:
+                                                current_text_parts.append(event.part.content)
+                                                yield f"data: {json.dumps({'type': 'text_delta', 'content': event.part.content})}\n\n"
+                                            continue
+                                        elif isinstance(event, PartDeltaEvent):
+                                            if isinstance(event.delta, TextPartDelta):
+                                                # Stream text delta
+                                                content = event.delta.content_delta
+                                                current_text_parts.append(content)
+                                                yield f"data: {json.dumps({'type': 'text_delta', 'content': content})}\n\n"
+                                            elif isinstance(event.delta, ToolCallPartDelta):
+                                                # Tool call is being constructed - we'll handle it in CallToolsNode
+                                                pass
+                                                
+                            elif Agent.is_call_tools_node(node):
+                                # The model wants to call tools
+                                
+                                async with node.stream(agent_run.ctx) as stream:
+                                    tool_name_map = {}  # Map tool_call_id to tool_name for responses
+                                    
+                                    async for event in stream:
+                                        if isinstance(event, FunctionToolCallEvent):
+                                            # Tool is being called
+                                            # Debug: log what we're getting
+                                            print(f"DEBUG STREAMING: Tool call {event.part.tool_name} - event.part.args type: {type(event.part.args)}, value: {event.part.args}")
+                                            
+                                            # Handle case where args might be a JSON string
+                                            args = event.part.args
+                                            if isinstance(args, str):
+                                                try:
+                                                    args = json.loads(args)
+                                                except json.JSONDecodeError:
+                                                    # If it's not valid JSON, wrap it in a dict
+                                                    args = {"value": args}
+                                            elif not isinstance(args, dict):
+                                                # If it's not a dict or string, convert to dict
+                                                args = {"value": str(args)}
+                                            
+                                            # Note: We'll save to database after streaming completes
+                                            
+                                            # Track tool name for response
+                                            tool_name_map[event.part.tool_call_id] = event.part.tool_name
+                                            
+                                            # Stream tool call to client
+                                            tool_data = {
+                                                'tool_name': event.part.tool_name,
+                                                'args': args,
+                                                'tool_call_id': event.part.tool_call_id
+                                            }
+                                            yield f"data: {json.dumps({'type': 'tool_call', **tool_data})}\n\n"
+                                            
+                                        elif isinstance(event, FunctionToolResultEvent):
+                                            # Tool returned a result
+                                            tool_name = tool_name_map.get(event.tool_call_id, "unknown")
+                                            
+                                            # Note: We'll save to database after streaming completes
+                                            
+                                            # Stream tool response to client
+                                            yield f"data: {json.dumps({'type': 'tool_return', 'tool_call_id': event.tool_call_id, 'content': str(event.result.content)})}\n\n"
+                            
+                            elif Agent.is_end_node(node):
+                                # We've reached the end
+                                break
+                        
+                        # The conversation's history is already updated by the agent run
+                        # Get the result (it's a property, not async)
+                        result = agent_run.result
+                        current_conv.history.extend(result.new_messages())
+            else:
+                # No toolsets, use simple streaming
+                async with current_conv._agent.iter(request.message, message_history=current_conv.history) as agent_run:
+                    async for node in agent_run:
+                        
+                        if Agent.is_user_prompt_node(node):
+                            # Skip user prompt nodes
+                            continue
+                            
+                        elif Agent.is_model_request_node(node):
+                            # The model is generating a response - stream it!
+                            async with node.stream(agent_run.ctx) as stream:
+                                async for event in stream:
+                                    if isinstance(event, PartStartEvent):
+                                        if isinstance(event.part, TextPart) and event.part.content:
+                                            current_text_parts.append(event.part.content)
+                                            yield f"data: {json.dumps({'type': 'text_delta', 'content': event.part.content})}\n\n"
+                                        continue
+                                    elif isinstance(event, PartDeltaEvent):
+                                        if isinstance(event.delta, TextPartDelta):
+                                            content = event.delta.content_delta
+                                            current_text_parts.append(content)
+                                            yield f"data: {json.dumps({'type': 'text_delta', 'content': content})}\n\n"
+                        
+                        elif Agent.is_end_node(node):
+                            # We've reached the end
+                            break
+                    
+                    # Get the result and update history
+                    result = agent_run.result
+                    current_conv.history.extend(result.new_messages())
             
             # Save conversation state
             await conversation_manager.save_current(db)

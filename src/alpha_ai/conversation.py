@@ -165,19 +165,27 @@ class Conversation:
                 toolsets=self._toolsets or []
             )
             
-            # Handle MCP connection context
-            if self._toolsets:
-                self._agent_context = await self._agent.__aenter__()
+            # Don't enter the context here - we need to do it per request
+            # to avoid ClosedResourceError
     
     async def chat(self, user_message: str) -> AgentRunResult:
         """User wants to chat - we handle everything."""
         await self.ensure_agent()
         
-        # Pass our full history to maintain context
-        result = await self._agent.run(
-            user_message,
-            message_history=self.history
-        )
+        # If we have toolsets, we need to use the agent as a context manager
+        if self._toolsets:
+            async with self._agent as agent_in_context:
+                # Pass our full history to maintain context
+                result = await agent_in_context.run(
+                    user_message,
+                    message_history=self.history
+                )
+        else:
+            # No toolsets, can use directly
+            result = await self._agent.run(
+                user_message,
+                message_history=self.history
+            )
         
         # Update our history with new messages
         self.history.extend(result.new_messages())
@@ -194,13 +202,10 @@ class Conversation:
     
     async def dispose_agent(self):
         """Clean up agent resources."""
-        if self._agent and self._agent_context:
-            try:
-                await self._agent.__aexit__(None, None, None)
-            except Exception as e:
-                print(f"Error disposing agent: {e}")
+        # Since we're using the agent as a context manager per request,
+        # we just need to clear the reference
         self._agent = None
-        self._agent_context = None
+        self._toolsets = None
     
     def to_db_model(self, db: Session) -> ConversationModel:
         """Convert to database model."""
