@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useLayoutEffect } from 'react'
 import { Brain, SquarePen, PanelLeft, Copy, ChevronDown, ChevronRight, Search, FileText, Code, Eye, EyeOff } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
@@ -261,9 +261,13 @@ function App() {
   const [input, setInput] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
   const [abortController, setAbortController] = useState<AbortController | null>(null)
+  const [conversationLoaded, setConversationLoaded] = useState(false)
   
   // Ref for the textarea
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  
+  // Ref for the chat area
+  const chatAreaRef = useRef<HTMLDivElement>(null)
   
   // Track which messages have markdown rendering disabled
   const [rawMarkdownIds, setRawMarkdownIds] = useState<Set<string>>(new Set())
@@ -283,20 +287,25 @@ function App() {
   const [currentPromptFile, setCurrentPromptFile] = useState<string | null>(null)
   const [currentPromptContent, setCurrentPromptContent] = useState<string | null>(null)
 
-  // Scroll to bottom when messages change
+  // Scroll to bottom immediately when conversation loads (before paint)
+  useLayoutEffect(() => {
+    if (conversationLoaded && messages.length > 0 && chatAreaRef.current) {
+      chatAreaRef.current.scrollTop = chatAreaRef.current.scrollHeight
+    }
+  }, [conversationLoaded])
+  
+  // Scroll to bottom when new messages arrive during conversation
   useEffect(() => {
+    if (!conversationLoaded || messages.length === 0) return
+    
     const scrollToBottom = () => {
-      const chatArea = document.querySelector('main > div.flex-1')
-      if (chatArea) {
-        chatArea.scrollTo({
-          top: chatArea.scrollHeight,
-          behavior: 'smooth'
-        })
+      if (chatAreaRef.current) {
+        chatAreaRef.current.scrollTop = chatAreaRef.current.scrollHeight
       }
     }
     
     // Small delay to ensure DOM is updated
-    setTimeout(scrollToBottom, 100)
+    setTimeout(scrollToBottom, 0)
   }, [messages])
 
   // Load conversation on mount
@@ -334,6 +343,9 @@ function App() {
         }
       } catch (error) {
         console.error('Failed to load conversation:', error)
+      } finally {
+        // Mark conversation as loaded regardless of success/failure
+        setConversationLoaded(true)
       }
     }
     
@@ -526,8 +538,10 @@ function App() {
       setMessages(prev => [...prev, assistantMessage])
       
       let buffer = ''
+      let currentAssistantMessage = assistantMessage
       let accumulatedContent = ''
       const pendingToolCalls: Record<string, ToolCall> = {}
+      let lastEventType: 'text' | 'tool' | null = null
       
       while (true) {
         const { done, value } = await reader.read()
@@ -560,15 +574,36 @@ function App() {
               console.log('Parsed event:', event)
               
               if (event.type === 'text_delta') {
+                // If we were processing tool calls and now we're getting text, create a new message
+                if (lastEventType === 'tool' && accumulatedContent === '') {
+                  const newMessage: Message = {
+                    id: Date.now().toString() + '-' + Math.random().toString(36).substring(2, 9),
+                    role: 'assistant',
+                    content: '',
+                    tool_calls: []
+                  }
+                  currentAssistantMessage = newMessage
+                  setMessages(prev => [...prev, newMessage])
+                }
+                
+                lastEventType = 'text'
                 accumulatedContent += event.content
                 console.log('Accumulated content:', accumulatedContent)
-                // Update the assistant message with accumulated content
+                
+                // Update the current assistant message with accumulated content
                 setMessages(prev => prev.map(msg => 
-                  msg.id === assistantMessage.id 
+                  msg.id === currentAssistantMessage.id 
                     ? { ...msg, content: accumulatedContent }
                     : msg
                 ))
               } else if (event.type === 'tool_call') {
+                // If we were processing text and now we're getting a tool call, prepare for a new message
+                if (lastEventType === 'text' && accumulatedContent !== '') {
+                  // Reset for next message
+                  accumulatedContent = ''
+                }
+                
+                lastEventType = 'tool'
                 const toolCall: ToolCall = {
                   tool_name: event.tool_name,
                   args: event.args,
@@ -584,15 +619,27 @@ function App() {
                     tool_call_id: event.tool_call_id
                   }
                   
-                  // Update the assistant message with the tool call pair
-                  setMessages(prev => prev.map(msg => 
-                    msg.id === assistantMessage.id 
-                      ? { 
-                          ...msg, 
-                          tool_calls: [...(msg.tool_calls || []), [toolCall, toolResponse]]
-                        }
-                      : msg
-                  ))
+                  // Create a new message for this tool call/response pair
+                  const toolMessage: Message = {
+                    id: Date.now().toString() + '-tool-' + Math.random().toString(36).substring(2, 9),
+                    role: 'assistant',
+                    content: '',
+                    tool_calls: [[toolCall, toolResponse]]
+                  }
+                  
+                  // Insert the tool message BEFORE the current text message if we have one
+                  setMessages(prev => {
+                    const messages = [...prev]
+                    const currentIndex = messages.findIndex(m => m.id === currentAssistantMessage.id)
+                    if (currentIndex !== -1 && accumulatedContent !== '') {
+                      // Insert before the current message
+                      messages.splice(currentIndex, 0, toolMessage)
+                    } else {
+                      // Just append if we don't have a current text message
+                      messages.push(toolMessage)
+                    }
+                    return messages
+                  })
                   
                   delete pendingToolCalls[event.tool_call_id]
                 }
@@ -602,7 +649,7 @@ function App() {
               } else if (event.type === 'error') {
                 console.error('Stream error:', event.error || event.content)
                 setMessages(prev => prev.map(msg => 
-                  msg.id === assistantMessage.id 
+                  msg.id === currentAssistantMessage.id 
                     ? { ...msg, content: accumulatedContent + '\n\n*Error: ' + (event.error || event.content) + '*' }
                     : msg
                 ))
@@ -731,8 +778,11 @@ function App() {
 
         <main className="flex-1 flex flex-col">
           {/* Chat area */}
-          <div className="flex-1 overflow-y-auto">
-            {messages.length === 0 ? (
+          <div ref={chatAreaRef} className="flex-1 overflow-y-auto">
+            {!conversationLoaded ? (
+              // Don't show anything while loading
+              <div className="h-full"></div>
+            ) : messages.length === 0 ? (
               <div className="flex items-center justify-center h-full">
                 <h1 className="text-4xl font-normal text-muted-foreground">What can I help with?</h1>
               </div>
@@ -820,52 +870,56 @@ function App() {
                   disabled={!currentModel}
                 />
               </form>
-              {currentModel && (
-                <div className="flex items-center justify-between mt-2 px-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-muted-foreground">{currentModel}</span>
-                    <button
-                      type="button"
-                      className="text-muted-foreground hover:text-foreground transition-colors"
-                      onClick={() => navigator.clipboard.writeText(currentModel)}
-                      title="Copy model ID"
-                    >
-                      <Copy className="h-3 w-3" />
-                    </button>
-                    {currentPromptFile && (
-                      <>
-                        <span className="text-[11px] text-muted-foreground">•</span>
-                        <span className="text-[11px] text-muted-foreground">{currentPromptFile}</span>
-                        <button
-                          type="button"
-                          className="text-muted-foreground hover:text-foreground transition-colors"
-                          onClick={() => setIsPromptModalOpen(true)}
-                          title="View system prompt"
-                        >
-                          <FileText className="h-3 w-3" />
-                        </button>
-                      </>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    className={`text-[11px] transition-colors ${
-                      isStreaming 
-                        ? 'text-foreground hover:text-destructive cursor-pointer' 
-                        : 'text-muted-foreground/50 cursor-default'
-                    }`}
-                    onClick={() => {
-                      if (isStreaming && abortController) {
-                        abortController.abort()
-                        setIsStreaming(false)
-                      }
-                    }}
-                    disabled={!isStreaming}
-                  >
-                    stop
-                  </button>
+              <div className="flex items-center justify-between mt-2 px-2">
+                <div className="flex items-center gap-2">
+                  {currentModel ? (
+                    <>
+                      <span className="text-[11px] text-muted-foreground">{currentModel}</span>
+                      <button
+                        type="button"
+                        className="text-muted-foreground hover:text-foreground transition-colors"
+                        onClick={() => navigator.clipboard.writeText(currentModel)}
+                        title="Copy model ID"
+                      >
+                        <Copy className="h-3 w-3" />
+                      </button>
+                      {currentPromptFile && (
+                        <>
+                          <span className="text-[11px] text-muted-foreground">•</span>
+                          <span className="text-[11px] text-muted-foreground">{currentPromptFile}</span>
+                          <button
+                            type="button"
+                            className="text-muted-foreground hover:text-foreground transition-colors"
+                            onClick={() => setIsPromptModalOpen(true)}
+                            title="View system prompt"
+                          >
+                            <FileText className="h-3 w-3" />
+                          </button>
+                        </>
+                      )}
+                    </>
+                  ) : (
+                    <span className="text-[11px] text-muted-foreground/50"></span>
+                  )}
                 </div>
-              )}
+                <button
+                  type="button"
+                  className={`text-[11px] transition-colors ${
+                    isStreaming 
+                      ? 'text-foreground hover:text-destructive cursor-pointer' 
+                      : 'text-muted-foreground/50 cursor-default'
+                  }`}
+                  onClick={() => {
+                    if (isStreaming && abortController) {
+                      abortController.abort()
+                      setIsStreaming(false)
+                    }
+                  }}
+                  disabled={!isStreaming}
+                >
+                  stop
+                </button>
+              </div>
             </div>
           </div>
         </main>

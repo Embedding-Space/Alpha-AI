@@ -1,0 +1,31 @@
+{
+  "mcpServers": {
+    "alpha-brain": {
+      "command": "npx",
+      "args": [
+        "mcp-remote",
+        "http://host.docker.internal:9102/mcp/"
+      ]
+    },
+    "fetch": {
+      "command": "uvx",
+      "args": [
+        "mcp-server-fetch"
+      ]
+    },
+    "context7": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@upstash/context7-mcp@latest"
+      ]
+    },
+    "unirag": {
+      "command": "npx",
+      "args": [
+        "mcp-remote",
+        "http://host.docker.internal:3000/mcp/"
+      ]
+    }
+  }
+}
