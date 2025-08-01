@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Brain, SquarePen, PanelLeft, Copy, ChevronDown, ChevronRight, Search, FileText, Code } from 'lucide-react'
+import { Brain, SquarePen, PanelLeft, Copy, ChevronDown, ChevronRight, Search, FileText, Code, Eye, EyeOff } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
@@ -219,6 +219,9 @@ function App() {
   
   // Ref for the textarea
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  
+  // Track which messages have markdown rendering disabled
+  const [rawMarkdownIds, setRawMarkdownIds] = useState<Set<string>>(new Set())
   
   // Model selector state
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -598,6 +601,18 @@ function App() {
     }
   }
 
+  const toggleRawMarkdown = (messageId: string) => {
+    setRawMarkdownIds(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(messageId)) {
+        newSet.delete(messageId)
+      } else {
+        newSet.add(messageId)
+      }
+      return newSet
+    })
+  }
+
   const adjustTextareaHeight = (element: HTMLTextAreaElement) => {
     // If empty, reset to default
     if (!element.value.trim()) {
@@ -688,31 +703,46 @@ function App() {
                     >
                       {message.role === 'user' ? (
                         <div className="max-w-[70%] px-4 py-2.5 rounded-2xl bg-blue-600 text-white text-[17px] leading-relaxed">
-                          <div className="prose prose-invert prose-sm max-w-none 
-                            prose-p:my-1 prose-p:leading-relaxed
-                            prose-headings:my-2 prose-headings:font-semibold
-                            prose-strong:font-bold
-                            prose-em:italic">
+                          <div className="markdown-body">
                             <ReactMarkdown components={markdownComponents}>
                               {message.content}
                             </ReactMarkdown>
                           </div>
                         </div>
                       ) : (
-                        <div className="w-full text-foreground text-[17px] leading-relaxed">
+                        <div className="w-full">
                           {/* Show tool calls BEFORE the message content */}
                           {message.tool_calls && message.tool_calls.length > 0 && (
                             <ToolCallDisplay toolCalls={message.tool_calls} />
                           )}
-                          <div className="prose prose-invert prose-lg max-w-none
-                            prose-p:my-2 prose-p:leading-relaxed prose-p:text-[17px]
-                            prose-headings:my-3 prose-headings:font-semibold
-                            prose-h1:text-2xl prose-h2:text-xl prose-h3:text-lg
-                            prose-strong:font-bold prose-strong:text-white
-                            prose-em:italic">
-                            <ReactMarkdown components={markdownComponents}>
-                              {message.content}
-                            </ReactMarkdown>
+                          {/* Assistant message card */}
+                          <div className="bg-sidebar rounded-2xl px-4 py-3 text-foreground text-[17px] leading-relaxed">
+                            {/* Content - either markdown or raw */}
+                            {rawMarkdownIds.has(message.id) ? (
+                              <pre className="text-sm font-mono whitespace-pre-wrap break-words">
+                                {message.content}
+                              </pre>
+                            ) : (
+                              <div className="markdown-body">
+                                <ReactMarkdown components={markdownComponents}>
+                                  {message.content}
+                                </ReactMarkdown>
+                              </div>
+                            )}
+                          </div>
+                          {/* Action buttons below the card */}
+                          <div className="flex justify-end gap-2 mt-2">
+                            <button
+                              onClick={() => toggleRawMarkdown(message.id)}
+                              className="p-1.5 text-muted-foreground hover:text-foreground rounded hover:bg-muted/50 transition-colors"
+                              title={rawMarkdownIds.has(message.id) ? "Show formatted" : "Show raw markdown"}
+                            >
+                              {rawMarkdownIds.has(message.id) ? (
+                                <Eye className="w-4 h-4" />
+                              ) : (
+                                <EyeOff className="w-4 h-4" />
+                              )}
+                            </button>
                           </div>
                         </div>
                       )}
@@ -972,20 +1002,7 @@ function App() {
             {/* Prompt Content */}
             <div className="flex-1 overflow-y-auto p-6">
               {currentPromptContent ? (
-                <div className="prose prose-invert prose-base max-w-none
-                  prose-p:my-3 prose-p:leading-relaxed prose-p:text-[15px]
-                  prose-code:text-[13px] prose-code:bg-white/10 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:font-mono
-                  prose-pre:bg-black/50 prose-pre:p-4 prose-pre:rounded-lg prose-pre:my-4 prose-pre:text-[14px]
-                  prose-headings:my-4 prose-headings:font-semibold prose-headings:text-white prose-headings:leading-tight
-                  prose-h1:text-2xl prose-h1:mb-6 prose-h1:mt-8 first:prose-h1:mt-0
-                  prose-h2:text-xl prose-h2:mb-4 prose-h2:mt-6
-                  prose-h3:text-lg prose-h3:mb-3 prose-h3:mt-5
-                  prose-ul:my-3 prose-li:my-1 prose-li:text-[15px]
-                  prose-ol:my-3 prose-ol:text-[15px]
-                  prose-a:text-blue-400 prose-a:underline prose-a:text-[15px]
-                  prose-blockquote:border-l-4 prose-blockquote:border-white/30 prose-blockquote:pl-4 prose-blockquote:italic prose-blockquote:text-[15px] prose-blockquote:my-4
-                  prose-strong:font-bold prose-strong:text-white
-                  prose-em:italic">
+                <div className="markdown-body">
                   <ReactMarkdown components={markdownComponents}>
                     {currentPromptContent}
                   </ReactMarkdown>

@@ -1,6 +1,6 @@
 @import "tailwindcss";
-@plugin "@tailwindcss/typography";
 @import "tw-animate-css";
+@import "./github-markdown.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -118,4 +118,51 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* Override GitHub markdown styles to work with our theme */
+.markdown-body {
+  background-color: transparent !important; /* Use parent background */
+  color: inherit !important; /* Use parent text color */
+  font-size: 16px !important; /* Base font size - edit this! */
+}
+
+/* Customize list styles */
+.markdown-body ul {
+  padding-left: 1.5em !important; /* Reduce indentation */
+  margin-top: 0.5em !important; /* Less space before lists */
+  margin-bottom: 0.5em !important; /* Less space after lists */
+}
+
+.markdown-body li {
+  margin-top: 0.25em !important; /* Reduce spacing between items */
+  margin-bottom: 0.25em !important;
+}
+
+/* Fix nested list spacing */
+.markdown-body li > ul {
+  margin-top: 0.25em !important; /* Tiny space before nested lists */
+  margin-bottom: 0.25em !important;
+}
+
+/* Fix paragraph spacing */
+.markdown-body p {
+  margin-top: 0.5em !important; /* Reduce space between paragraphs */
+  margin-bottom: 0.5em !important;
+}
+
+/* Fix spacing when a paragraph with only bold text is followed by a list */
+.markdown-body li > p:has(strong:only-child) {
+  margin-bottom: 0.25em !important;
+}
+
+/* Remove margin from ul/ol that directly follows a paragraph in a list item */
+.markdown-body li > p + ul,
+.markdown-body li > p + ol {
+  margin-top: 0 !important;
+}
+
+/* Fix code block colors to match our theme */
+.markdown-body pre {
+  background-color: rgba(0, 0, 0, 0.3) !important;
 }
