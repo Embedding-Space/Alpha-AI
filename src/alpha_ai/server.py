@@ -69,18 +69,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount static files
-static_dir = Path(__file__).parent / "static"
-if static_dir.exists():
-    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+# Mount static files from frontend build
+frontend_dist = Path(__file__).parent.parent.parent / "frontend" / "dist"
+
+# Serve from frontend dist if it exists
+if frontend_dist.exists():
+    app.mount("/assets", StaticFiles(directory=str(frontend_dist / "assets")), name="assets")
+    serve_from = frontend_dist
+else:
+    serve_from = None
 
 
 @app.get("/")
 async def root():
     """Serve the web UI."""
-    html_file = Path(__file__).parent / "static" / "index.html"
-    if html_file.exists():
-        return FileResponse(html_file)
+    if serve_from:
+        html_file = serve_from / "index.html"
+        if html_file.exists():
+            return FileResponse(html_file)
     return {"message": "Alpha AI API"}
 
 
@@ -544,6 +550,17 @@ async def clear_conversation(db: Session = Depends(get_db)):
     conversation_manager.clear_conversation(db)
     
     return {"status": "conversation cleared", "model": agent_manager.get_model()}
+
+
+# Catch-all route for SPA client-side routing - must be last!
+@app.get("/{full_path:path}")
+async def serve_spa(full_path: str):
+    """Serve the SPA for any unmatched routes (client-side routing)."""
+    if serve_from:
+        html_file = serve_from / "index.html"
+        if html_file.exists():
+            return FileResponse(html_file)
+    raise HTTPException(status_code=404, detail="Not found")
 
 
 if __name__ == "__main__":

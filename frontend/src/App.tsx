@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Brain, SquarePen, PanelLeft, Copy, ChevronDown, ChevronRight, Search, X, FileText, Code } from 'lucide-react'
+import { Brain, SquarePen, PanelLeft, Copy, ChevronDown, ChevronRight, Search, FileText, Code } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
@@ -22,7 +22,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import {

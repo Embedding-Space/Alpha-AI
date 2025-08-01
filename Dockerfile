@@ -19,6 +19,9 @@ RUN uv --version
 COPY pyproject.toml ./
 COPY src/ ./src/
 
+# Copy frontend build if it exists
+COPY frontend/dist ./frontend/dist
+
 # Install the package in editable mode
 RUN uv pip install --system -e .
 

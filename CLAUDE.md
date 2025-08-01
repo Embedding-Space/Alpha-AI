@@ -39,12 +39,13 @@ Alpha AI is a provider-agnostic AI agent server that creates Alpha-architecture 
    - MCP (Model Context Protocol) server integration
    - Dynamic agent creation and lifecycle management
 
-3. **Web UI** (`src/alpha_ai/static/index.html`)
-   - Single-file architecture with inline JavaScript and Tailwind CSS via CDN
-   - Real-time streaming chat interface
+3. **Web UI** (`frontend/`)
+   - React + TypeScript + Vite + Tailwind CSS + shadcn/ui
+   - Real-time streaming chat interface with SSE
    - Modal-based model selector with search-first UX
    - Dynamic model discovery without page reload
    - Tool call visualization with request/response display
+   - Built files served from `frontend/dist/` by FastAPI
 
 4. **MCP Bridge** (`src/alpha_ai_mcp/`)
    - stdio bridge for Claude Code/Desktop integration
