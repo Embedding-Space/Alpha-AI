@@ -901,55 +901,49 @@ function App() {
                 disabled={!selectedModel}
                 onClick={async () => {
                   if (selectedModel) {
-                    if (selectedModel === currentModel && selectedPrompt === (currentPromptFile || 'none')) {
-                      // Clear Chat & Continue - just clear messages
-                      setMessages([])
-                      setIsModalOpen(false)
-                    } else {
-                      // Start New Chat - create new conversation
-                      try {
-                        const response = await fetch('http://localhost:8100/api/v1/conversation/new', {
-                          method: 'POST',
-                          headers: {
-                            'Content-Type': 'application/json',
-                          },
-                          body: JSON.stringify({
-                            model: selectedModel,
-                            system_prompt: selectedPrompt === 'none' ? null : selectedPrompt
-                          })
+                    // Always create a new conversation, regardless of whether model/prompt changed
+                    try {
+                      const response = await fetch('http://localhost:8100/api/v1/conversation/new', {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                          model: selectedModel,
+                          system_prompt: selectedPrompt === 'none' ? null : selectedPrompt
                         })
+                      })
+                      
+                      if (response.ok) {
+                        // Update current state
+                        setCurrentModel(selectedModel)
+                        setCurrentPromptFile(selectedPrompt === 'none' ? null : selectedPrompt)
+                        setMessages([])
                         
-                        if (response.ok) {
-                          // Update current state
-                          setCurrentModel(selectedModel)
-                          setCurrentPromptFile(selectedPrompt === 'none' ? null : selectedPrompt)
-                          setMessages([])
-                          
-                          // Fetch the prompt content if a prompt was selected
-                          if (selectedPrompt !== 'none') {
-                            try {
-                              const promptResponse = await fetch(`http://localhost:8100/api/v1/prompts/${selectedPrompt}`)
-                              if (promptResponse.ok) {
-                                const promptData = await promptResponse.json()
-                                setCurrentPromptContent(promptData.content)
-                              }
-                            } catch (error) {
-                              console.error('Failed to fetch prompt content:', error)
+                        // Fetch the prompt content if a prompt was selected
+                        if (selectedPrompt !== 'none') {
+                          try {
+                            const promptResponse = await fetch(`http://localhost:8100/api/v1/prompts/${selectedPrompt}`)
+                            if (promptResponse.ok) {
+                              const promptData = await promptResponse.json()
+                              setCurrentPromptContent(promptData.content)
                             }
-                          } else {
-                            setCurrentPromptContent(null)
+                          } catch (error) {
+                            console.error('Failed to fetch prompt content:', error)
                           }
-                          
-                          setIsModalOpen(false)
+                        } else {
+                          setCurrentPromptContent(null)
                         }
-                      } catch (error) {
-                        console.error('Failed to create new conversation:', error)
+                        
+                        setIsModalOpen(false)
                       }
+                    } catch (error) {
+                      console.error('Failed to create new conversation:', error)
                     }
                   }
                 }}
               >
-                {selectedModel === currentModel && selectedPrompt === (currentPromptFile || 'none') ? 'Clear Chat & Continue' : 'Start New Chat'}
+                Start New Chat
               </Button>
             </div>
           </DialogContent>

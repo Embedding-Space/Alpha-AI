@@ -20,11 +20,13 @@ from pydantic_ai.messages import (
     ModelResponse, ModelRequest, ToolCallPart, ToolReturnPart,
     TextPart, TextPartDelta, ToolCallPartDelta,
     PartStartEvent, PartDeltaEvent, FinalResultEvent,
-    FunctionToolCallEvent, FunctionToolResultEvent
+    FunctionToolCallEvent, FunctionToolResultEvent,
+    SystemPromptPart, UserPromptPart
 )
 from alpha_ai.settings import settings
-from alpha_ai.agent import agent_manager
-from alpha_ai.database import init_db, get_db, conversation_manager, EventType
+from alpha_ai.database import init_db, get_db
+from alpha_ai.conversation import conversation_manager, event_bus
+from alpha_ai.model_discovery import model_discovery
 from pydantic_ai import Agent
 
 
@@ -42,15 +44,25 @@ async def lifespan(_app: FastAPI):
     init_db()
     print("Database initialized successfully")
     
-    # Initialize the agent
-    await agent_manager.initialize()
-    print("Agent initialized successfully")
+    # Load the most recent conversation
+    from alpha_ai.database import get_db
+    db_gen = get_db()
+    db = next(db_gen)
+    try:
+        conv = await conversation_manager.load_most_recent(db)
+        if conv:
+            print(f"Loaded conversation {conv.id} with model {conv.model}")
+        else:
+            print("No existing conversations found")
+    finally:
+        db_gen.close()
     
     yield
     
     # Shutdown
     print("Shutting down Alpha AI server...")
-    await agent_manager.cleanup()
+    if conversation_manager.current_conversation:
+        await conversation_manager.current_conversation.dispose_agent()
 
 
 app = FastAPI(
@@ -93,10 +105,11 @@ async def root():
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
+    current_conv = conversation_manager.get_current()
     return {
         "status": "healthy",
-        "model": agent_manager.get_model(),
-        "mcp_servers": list(agent_manager.mcp_servers.keys()),
+        "model": current_conv.model if current_conv else None,
+        "conversation_id": current_conv.id if current_conv else None,
         "streaming": settings.streaming
     }
 
@@ -104,94 +117,48 @@ async def health_check():
 @app.post(f"{settings.api_v1_prefix}/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest, db: Session = Depends(get_db)):
     """Send a message and get a response."""
-    # Check if a model is selected, fall back to conversation model if needed
-    current_model = agent_manager.get_model()
-    if not current_model:
-        # Try to get model from existing conversation
-        conversation = conversation_manager.get_current_conversation(db)
-        if conversation and conversation.model:
-            # Restore the model from the conversation
-            print(f"Restoring model from conversation: {conversation.model}")
-            await agent_manager.set_model(conversation.model)
-            current_model = conversation.model
-        else:
-            raise HTTPException(status_code=400, detail="No model selected")
+    # Get current conversation
+    current_conv = conversation_manager.get_current()
+    if not current_conv:
+        raise HTTPException(status_code=400, detail="No active conversation. Please start a new conversation.")
     
-    # Set the model in the conversation manager
-    conversation_manager.set_model(current_model)
+    # Generate AI response using the conversation
+    result = await current_conv.chat(request.message)
+    response_text = str(result.output) if result.output else "I couldn't generate a response."
     
-    # Add user message event
-    conversation_manager.add_user_message(db, request.message)
+    # Save conversation state
+    await conversation_manager.save_current(db)
     
-    # Generate AI response and get full result
-    # TODO: Pass conversation history from database
-    result = await agent_manager.chat_with_result(request.message, [])
-    response_text = result.output
-    
-    # Process messages to extract events
+    # Process messages to extract tool calls for the response
     tool_calls = []
     messages = result.new_messages()
     
-    # Store each part as an event
     for msg in messages:
         if isinstance(msg, ModelResponse):
-            # Process each part of the model response
-            current_text_parts = []
-            
             for part in msg.parts:
-                if isinstance(part, TextPart):
-                    # Accumulate text parts
-                    current_text_parts.append(part.content)
-                elif isinstance(part, ToolCallPart):
-                    # Save any accumulated text first
-                    if current_text_parts:
-                        conversation_manager.add_assistant_message(db, ''.join(current_text_parts))
-                        current_text_parts = []
-                    
-                    # Save tool call event
-                    # Debug: log what we're getting
-                    print(f"DEBUG: Tool call {part.tool_name} - part.args type: {type(part.args)}, value: {part.args}")
-                    
-                    # Handle case where args might be a JSON string (same as streaming)
+                if isinstance(part, ToolCallPart):
+                    # Handle args serialization
                     args = part.args
                     if isinstance(args, str):
                         try:
                             import json
                             args = json.loads(args)
                         except json.JSONDecodeError:
-                            # If it's not valid JSON, wrap it in a dict
                             args = {"value": args}
                     elif not isinstance(args, dict):
-                        # If it's not a dict or string, convert to dict
                         args = {"value": str(args)}
                     
-                    conversation_manager.add_tool_call(db, part.tool_name, args, part.tool_call_id)
-                    
-                    # Track for response
                     tool_call = ToolCall(
                         tool_name=part.tool_name,
                         args=args,
                         tool_call_id=part.tool_call_id
                     )
                     tool_calls.append([tool_call, None])
-            
-            # Save any remaining text
-            if current_text_parts:
-                conversation_manager.add_assistant_message(db, ''.join(current_text_parts))
-                
+                    
         elif isinstance(msg, ModelRequest):
-            # Process tool returns
             for part in msg.parts:
                 if isinstance(part, ToolReturnPart):
-                    # Save tool response event
-                    conversation_manager.add_tool_response(
-                        db, 
-                        part.tool_name, 
-                        str(part.content), 
-                        part.tool_call_id
-                    )
-                    
-                    # Update tool_calls list
+                    # Update tool_calls list with response
                     for tc_pair in tool_calls:
                         if tc_pair[0].tool_call_id == part.tool_call_id:
                             tool_return = ToolReturn(
@@ -206,7 +173,7 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
     
     return ChatResponse(
         response=response_text,
-        model=agent_manager.get_model(),
+        model=current_conv.model,
         usage={
             "request_tokens": len(request.message.split()),
             "response_tokens": len(response_text.split()),
@@ -219,39 +186,25 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
 @app.post(f"{settings.api_v1_prefix}/chat/stream")
 async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
     """Stream a response using Server-Sent Events with proper graph-based streaming."""
-    # Check if a model is selected, fall back to conversation model if needed
-    current_model = agent_manager.get_model()
-    if not current_model:
-        # Try to get model from existing conversation
-        conversation = conversation_manager.get_current_conversation(db)
-        if conversation and conversation.model:
-            # Restore the model from the conversation
-            print(f"Restoring model from conversation: {conversation.model}")
-            await agent_manager.set_model(conversation.model)
-            current_model = conversation.model
-        else:
-            raise HTTPException(status_code=400, detail="No model selected")
-    
-    # Set the model in the conversation manager
-    conversation_manager.set_model(current_model)
-    
-    # Add user message to database
-    conversation_manager.add_user_message(db, request.message)
+    # Get current conversation
+    current_conv = conversation_manager.get_current()
+    if not current_conv:
+        raise HTTPException(status_code=400, detail="No active conversation. Please start a new conversation.")
     
     async def generate():
         import json
         try:
-            # Initialize agent if needed
-            await agent_manager.initialize()
+            # Ensure agent is ready
+            await current_conv.ensure_agent()
             
             # Send initial event
-            yield f"data: {json.dumps({'type': 'start', 'model': agent_manager.get_model()})}\n\n"
-            
-            # Track current assistant text being accumulated
-            current_text_parts = []
+            yield f"data: {json.dumps({'type': 'start', 'model': current_conv.model})}\n\n"
             
             # Use agent.iter() to walk through the execution graph
-            async with agent_manager.agent.iter(request.message) as agent_run:
+            async with current_conv._agent.iter(request.message, message_history=current_conv.history) as agent_run:
+                # Initialize current_text_parts at the beginning of streaming
+                current_text_parts = []
+                
                 async for node in agent_run:
                     
                     if Agent.is_user_prompt_node(node):
@@ -281,10 +234,6 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                                         
                     elif Agent.is_call_tools_node(node):
                         # The model wants to call tools
-                        # First, save any accumulated text
-                        if current_text_parts:
-                            conversation_manager.add_assistant_message(db, ''.join(current_text_parts))
-                            current_text_parts = []
                         
                         async with node.stream(agent_run.ctx) as stream:
                             tool_name_map = {}  # Map tool_call_id to tool_name for responses
@@ -307,13 +256,7 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                                         # If it's not a dict or string, convert to dict
                                         args = {"value": str(args)}
                                     
-                                    # Save tool call event to database
-                                    conversation_manager.add_tool_call(
-                                        db, 
-                                        event.part.tool_name, 
-                                        args, 
-                                        event.part.tool_call_id
-                                    )
+                                    # Note: We'll save to database after streaming completes
                                     
                                     # Track tool name for response
                                     tool_name_map[event.part.tool_call_id] = event.part.tool_name
@@ -330,13 +273,7 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                                     # Tool returned a result
                                     tool_name = tool_name_map.get(event.tool_call_id, "unknown")
                                     
-                                    # Save tool response event to database
-                                    conversation_manager.add_tool_response(
-                                        db,
-                                        tool_name,
-                                        str(event.result.content),
-                                        event.tool_call_id
-                                    )
+                                    # Note: We'll save to database after streaming completes
                                     
                                     # Stream tool response to client
                                     yield f"data: {json.dumps({'type': 'tool_return', 'tool_call_id': event.tool_call_id, 'content': str(event.result.content)})}\n\n"
@@ -345,9 +282,13 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
                         # We've reached the end
                         break
             
-            # Save any remaining assistant text
-            if current_text_parts:
-                conversation_manager.add_assistant_message(db, ''.join(current_text_parts))
+            # The conversation's history is already updated by the agent run
+            # Get the result (it's a property, not async)
+            result = agent_run.result
+            current_conv.history.extend(result.new_messages())
+            
+            # Save conversation state
+            await conversation_manager.save_current(db)
             
             # Send done event
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
@@ -371,18 +312,20 @@ async def chat_stream(request: ChatRequest, db: Session = Depends(get_db)):
 @app.get(f"{settings.api_v1_prefix}/model", response_model=ModelInfo)
 async def get_model():
     """Get the current model."""
-    return ModelInfo(model=agent_manager.get_model())
+    current_conv = conversation_manager.get_current()
+    return ModelInfo(model=current_conv.model if current_conv else None)
 
 
 @app.get(f"{settings.api_v1_prefix}/models", response_model=ModelsResponse)
 async def get_models():
     """Get all available models."""
     # Refresh model list on every request
-    await agent_manager._load_available_models()
+    models = await model_discovery.discover_all()
     
+    current_conv = conversation_manager.get_current()
     return ModelsResponse(
-        models=list(agent_manager.get_available_models().values()),
-        current=agent_manager.get_model()
+        models=models,
+        current=current_conv.model if current_conv else None
     )
 
 
@@ -424,7 +367,7 @@ async def new_conversation(request: Dict[str, str], db: Session = Depends(get_db
     if not model:
         raise HTTPException(status_code=400, detail="Model is required")
     
-    prompt_name = request.get("prompt", "none")
+    prompt_name = request.get("system_prompt", "none")
     system_prompt = ""
     
     # Load the system prompt content if specified
@@ -436,120 +379,116 @@ async def new_conversation(request: Dict[str, str], db: Session = Depends(get_db
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"Error reading prompt file: {str(e)}")
     
-    # Set the new model first
-    try:
-        await agent_manager.set_model(model)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    
-    # Update the agent's system prompt
-    if system_prompt:
-        agent_manager.set_system_prompt(system_prompt)
-    
-    # Clear the current conversation and start a new one with the model and prompt
-    conversation_manager.clear_conversation(db, model, system_prompt)
+    # Create new conversation
+    await conversation_manager.create_new_conversation(
+        db=db,
+        model=model,
+        system_prompt_filename=prompt_name if prompt_name != "none" else None,
+        system_prompt_content=system_prompt if system_prompt else None
+    )
     
     return {"status": "new conversation started", "model": model, "prompt": prompt_name}
 
 
 @app.get(f"{settings.api_v1_prefix}/conversation", response_model=ConversationResponse)
 async def get_conversation(limit: int = 50, db: Session = Depends(get_db)):
-    """Get the conversation history by reconstructing from events."""
-    conversation = conversation_manager.get_current_conversation(db)
+    """Get the conversation history."""
+    current_conv = conversation_manager.get_current()
     
-    if not conversation:
+    if not current_conv:
         return ConversationResponse(
             messages=[],
             total_messages=0,
-            model=agent_manager.get_model(),
+            model=None,
             system_prompt=None
         )
     
-    # Reconstruct messages from events
+    # Convert PydanticAI messages to our API format
     messages = []
-    current_tool_calls = []  # Accumulate tool calls for assistant messages
-    pending_tool_map = {}  # Map tool_call_id to ToolCall
-    
-    # Get the last N events (increase limit to account for tool events)
-    events = conversation.events[-limit*3:]  # Rough estimate: each message might have tool calls
-    
-    for event in events:
-        if event.event_type == EventType.USER:
-            # User message - simple
-            message = MessageWithToolCalls(
-                role="user",
-                content=event.content,
-                timestamp=event.created_at,
-                tool_calls=None
-            )
-            messages.append(message)
+    for msg in current_conv.history[-limit:]:
+        if isinstance(msg, ModelRequest):
+            # Process request parts
+            for part in msg.parts:
+                if isinstance(part, SystemPromptPart):
+                    messages.append(MessageWithToolCalls(
+                        role="system",
+                        content=part.content,
+                        timestamp=part.timestamp or datetime.now(timezone.utc),
+                        tool_calls=None
+                    ))
+                elif isinstance(part, UserPromptPart):
+                    messages.append(MessageWithToolCalls(
+                        role="user",
+                        content=part.content,
+                        timestamp=part.timestamp or datetime.now(timezone.utc),
+                        tool_calls=None
+                    ))
+        elif isinstance(msg, ModelResponse):
+            # Collect text and tool calls
+            text_parts = []
+            tool_calls = []
             
-        elif event.event_type == EventType.ASSISTANT:
-            # Assistant message - check if we have accumulated tool calls
-            message = MessageWithToolCalls(
-                role="assistant",
-                content=event.content,
-                timestamp=event.created_at,
-                tool_calls=current_tool_calls if current_tool_calls else None
-            )
-            messages.append(message)
-            # Reset tool calls for next message
-            current_tool_calls = []
-            pending_tool_map = {}
+            for part in msg.parts:
+                if isinstance(part, TextPart):
+                    text_parts.append(part.content)
+                elif isinstance(part, ToolCallPart):
+                    # Need to find matching tool response
+                    tool_call = ToolCall(
+                        tool_name=part.tool_name,
+                        args=part.args if isinstance(part.args, dict) else {"value": str(part.args)},
+                        tool_call_id=part.tool_call_id
+                    )
+                    # TODO: Match with tool responses
+                    tool_calls.append((tool_call, None))
             
-        elif event.event_type == EventType.TOOL_CALL:
-            # Tool call - create ToolCall object
-            data = event.data or {}
-            tool_call = ToolCall(
-                tool_name=data.get("tool_name", "unknown"),
-                args=data.get("args", {}),
-                tool_call_id=data.get("tool_call_id", "")
-            )
-            pending_tool_map[tool_call.tool_call_id] = (tool_call, None)
-            
-        elif event.event_type == EventType.TOOL_RESPONSE:
-            # Tool response - pair with its call
-            data = event.data or {}
-            tool_call_id = data.get("tool_call_id", "")
-            
-            if tool_call_id in pending_tool_map:
-                tool_call, _ = pending_tool_map[tool_call_id]
-                tool_return = ToolReturn(
-                    tool_name=data.get("tool_name", "unknown"),
-                    content=event.content,
-                    tool_call_id=tool_call_id
-                )
-                # Update the pair and add to current_tool_calls
-                current_tool_calls.append((tool_call, tool_return))
-                del pending_tool_map[tool_call_id]
-        
-        elif event.event_type == EventType.SYSTEM:
-            # System message
-            message = MessageWithToolCalls(
-                role="system",
-                content=event.content,
-                timestamp=event.created_at,
-                tool_calls=None
-            )
-            messages.append(message)
-    
-    # Only return the last 'limit' actual messages
-    messages = messages[-limit:]
+            if text_parts or tool_calls:
+                messages.append(MessageWithToolCalls(
+                    role="assistant",
+                    content="".join(text_parts) if text_parts else "",
+                    timestamp=msg.timestamp or datetime.now(timezone.utc),
+                    tool_calls=tool_calls if tool_calls else None
+                ))
     
     return ConversationResponse(
         messages=messages,
-        total_messages=len(conversation.events),
-        model=conversation.model or "",  # Use the model stored with the conversation
-        system_prompt=conversation.system_prompt  # Include the system prompt
+        total_messages=len(current_conv.history),
+        model=current_conv.model,
+        system_prompt=current_conv.system_prompt_filename
     )
 
 
 @app.delete(f"{settings.api_v1_prefix}/conversation")
 async def clear_conversation(db: Session = Depends(get_db)):
-    """Clear the conversation context."""
-    conversation_manager.clear_conversation(db)
+    """Clear the conversation context by resetting message history."""
+    current_conv = conversation_manager.get_current()
     
-    return {"status": "conversation cleared", "model": agent_manager.get_model()}
+    if current_conv:
+        # Dispose the existing agent to clear any internal state
+        if current_conv._agent:
+            await current_conv.dispose_agent()
+        
+        # Clear the message history but keep the model and prompt
+        current_conv.history = []
+        
+        # If there was a system prompt, restore it as the first message
+        if current_conv.system_prompt_filename:
+            prompt_file = Path(f"/app/system_prompts/{current_conv.system_prompt_filename}")
+            if prompt_file.exists():
+                try:
+                    system_prompt_content = prompt_file.read_text(encoding="utf-8")
+                    first_request = ModelRequest(parts=[
+                        SystemPromptPart(content=system_prompt_content)
+                    ])
+                    current_conv.history.append(first_request)
+                except Exception:
+                    pass  # If we can't read the prompt, just leave history empty
+        
+        # Save the cleared conversation
+        await conversation_manager.save_current(db)
+        
+        return {"status": "conversation cleared", "model": current_conv.model}
+    
+    return {"status": "no conversation to clear", "model": None}
 
 
 # Catch-all route for SPA client-side routing - must be last!

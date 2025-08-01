@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     conversation_window_size: int = 10
     
     # Database
-    database_url: str
+    database_url: str = "sqlite:///./data/alpha_ai.db"
     
     # UI feature flags
     streaming: bool = True  # Show streaming toggle in UI
@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     openai_api_key: Optional[str] = None
     anthropic_api_key: Optional[str] = None
     groq_api_key: Optional[str] = None
+    gemini_api_key: Optional[str] = None
     openrouter_api_key: Optional[str] = None
     ollama_base_url: str = "http://localhost:11434/v1"
         
