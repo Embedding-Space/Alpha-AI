@@ -300,7 +300,13 @@ function App() {
     
     const scrollToBottom = () => {
       if (chatAreaRef.current) {
-        chatAreaRef.current.scrollTop = chatAreaRef.current.scrollHeight
+        const chatArea = chatAreaRef.current
+        const isAtBottom = chatArea.scrollHeight - chatArea.scrollTop - chatArea.clientHeight < 100
+        
+        // Only auto-scroll if user is already near the bottom
+        if (isAtBottom) {
+          chatArea.scrollTop = chatArea.scrollHeight
+        }
       }
     }
     
@@ -495,6 +501,13 @@ function App() {
     if (textareaRef.current) {
       textareaRef.current.style.height = ''
     }
+    
+    // Always scroll to bottom when user sends a message
+    setTimeout(() => {
+      if (chatAreaRef.current) {
+        chatAreaRef.current.scrollTop = chatAreaRef.current.scrollHeight
+      }
+    }, 0)
     
     // Create new abort controller for this request
     const controller = new AbortController()
