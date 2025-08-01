@@ -103,7 +103,7 @@ function ErrorDisplay({ message, details }: { message: string; details?: string 
   const [isExpanded, setIsExpanded] = useState(false)
   
   return (
-    <div className="my-3 rounded-lg bg-red-900/20 border border-red-800/50 overflow-hidden">
+    <div className="my-2 rounded-lg bg-red-900/20 border border-red-800/50 overflow-hidden">
       <button
         className="w-full px-4 py-3 flex items-center gap-2 text-left hover:bg-red-900/30 transition-colors"
         onClick={() => details && setIsExpanded(!isExpanded)}
@@ -146,7 +146,7 @@ function ToolCallDisplay({ toolCalls }: { toolCalls: Array<[ToolCall, ToolRespon
   }
 
   return (
-    <div className="space-y-2 my-3">
+    <div className="space-y-1 my-2">
       {toolCalls.map(([call, response], index) => {
         const isExpanded = expandedTools.has(call.tool_call_id)
         
@@ -894,7 +894,7 @@ function App() {
               </div>
             ) : (
               <div className="max-w-3xl mx-auto px-4 py-8">
-                <div className="space-y-6">
+                <div className="space-y-4">
                   {messages.map((message) => (
                     <div
                       key={message.id}
@@ -903,7 +903,7 @@ function App() {
                       }`}
                     >
                       {message.role === 'user' ? (
-                        <div className="max-w-[70%] px-4 py-2.5 rounded-2xl bg-blue-600 text-white text-[17px] leading-relaxed">
+                        <div className="max-w-[70%] px-4 py-2.5 bg-blue-600 text-white text-[17px] leading-relaxed" style={{ borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottomLeftRadius: '16px', borderBottomRightRadius: '4px' }}>
                           <div className="markdown-body">
                             <ReactMarkdown components={markdownComponents}>
                               {message.content}
@@ -923,7 +923,7 @@ function App() {
                           {/* Assistant message card - only show if there's content */}
                           {message.content && (
                             <>
-                              <div className="bg-sidebar rounded-2xl px-4 py-3 text-foreground text-[17px] leading-relaxed">
+                              <div className="bg-sidebar px-4 py-3 text-foreground text-[17px] leading-relaxed" style={{ borderTopLeftRadius: '16px', borderTopRightRadius: '16px', borderBottomLeftRadius: '4px', borderBottomRightRadius: '16px' }}>
                                 {/* Content - either markdown or raw */}
                                 {rawMarkdownIds.has(message.id) ? (
                                   <pre className="text-sm font-mono whitespace-pre-wrap break-words">
