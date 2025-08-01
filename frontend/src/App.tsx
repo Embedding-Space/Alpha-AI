@@ -85,9 +85,10 @@ interface ToolResponse {
 
 interface Message {
   id: string
-  role: 'user' | 'assistant'
+  role: 'user' | 'assistant' | 'error'
   content: string
   tool_calls?: Array<[ToolCall, ToolResponse]>
+  error_details?: string  // Full error/stacktrace for error messages
 }
 
 interface Model {
@@ -96,6 +97,39 @@ interface Model {
   provider: string
   input_cost?: number
   output_cost?: number
+}
+
+function ErrorDisplay({ message, details }: { message: string; details?: string }) {
+  const [isExpanded, setIsExpanded] = useState(false)
+  
+  return (
+    <div className="my-3 rounded-lg bg-red-900/20 border border-red-800/50 overflow-hidden">
+      <button
+        className="w-full px-4 py-3 flex items-center gap-2 text-left hover:bg-red-900/30 transition-colors"
+        onClick={() => details && setIsExpanded(!isExpanded)}
+      >
+        <span className="text-sm text-red-200">{message}</span>
+        {details && (
+          isExpanded ? (
+            <ChevronDown className="h-4 w-4 ml-auto text-red-400" />
+          ) : (
+            <ChevronRight className="h-4 w-4 ml-auto text-red-400" />
+          )
+        )}
+      </button>
+      
+      {isExpanded && details && (
+        <div className="px-4 pb-3">
+          <div className="text-xs font-medium text-red-400 mb-1">FULL ERROR</div>
+          <div className="rounded-md bg-black/50 p-3">
+            <pre className="text-xs text-red-200 whitespace-pre-wrap break-all font-mono">
+              {details}
+            </pre>
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
 
 function ToolCallDisplay({ toolCalls }: { toolCalls: Array<[ToolCall, ToolResponse]> }) {
@@ -245,6 +279,52 @@ function ToolCallDisplay({ toolCalls }: { toolCalls: Array<[ToolCall, ToolRespon
   )
 }
 
+function parseErrorMessage(errorText: string): string {
+  // Try to extract meaningful error messages from various formats
+  
+  // Check for JSON error format first
+  try {
+    const errorObj = JSON.parse(errorText)
+    if (errorObj.error?.message) {
+      return errorObj.error.message
+    }
+    if (errorObj.message) {
+      return errorObj.message
+    }
+  } catch {
+    // Not JSON, continue with string parsing
+  }
+  
+  // Look for common error patterns
+  const patterns = [
+    // Groq/OpenAI style: 'error': {'message': 'Request too large...'}
+    /'error':\s*{\s*'message':\s*'([^']+)'/,
+    /"error":\s*{\s*"message":\s*"([^"]+)"/,
+    // Simple message format
+    /message['"]\s*:\s*['"]([^'"]+)['"]/i,
+    // Status code errors
+    /status_code:\s*\d+,\s*model_name:\s*[^,]+,\s*body:\s*{[^}]*'message':\s*'([^']+)'/,
+    // Direct error messages
+    /Error:\s*(.+?)(?:\n|$)/i,
+  ]
+  
+  for (const pattern of patterns) {
+    const match = errorText.match(pattern)
+    if (match && match[1]) {
+      return match[1].trim()
+    }
+  }
+  
+  // If no pattern matches, try to extract the first sentence or reasonable chunk
+  const firstLine = errorText.split('\n')[0]
+  if (firstLine.length < 200) {
+    return firstLine
+  }
+  
+  // Last resort - truncate and indicate there's more
+  return errorText.substring(0, 200) + '...'
+}
+
 function App() {
   // Read sidebar state from cookie
   const getSidebarState = () => {
@@ -336,12 +416,13 @@ function App() {
           // Convert messages from API
           if (data.messages && data.messages.length > 0) {
             const conversationMessages: Message[] = data.messages
-              .filter((msg: any) => msg.role === 'user' || msg.role === 'assistant')
+              .filter((msg: any) => msg.role === 'user' || msg.role === 'assistant' || msg.role === 'error')
               .map((msg: any, index: number) => ({
                 id: msg.id || `${msg.role}-${index}`,
-                role: msg.role as 'user' | 'assistant',
+                role: msg.role as 'user' | 'assistant' | 'error',
                 content: msg.content,
-                tool_calls: msg.tool_calls
+                tool_calls: msg.tool_calls,
+                error_details: msg.error_details
               }))
             
             setMessages(conversationMessages)
@@ -660,12 +741,20 @@ function App() {
                 console.log('Stream completed')
                 // Stream is done, no action needed
               } else if (event.type === 'error') {
-                console.error('Stream error:', event.error || event.content)
-                setMessages(prev => prev.map(msg => 
-                  msg.id === currentAssistantMessage.id 
-                    ? { ...msg, content: accumulatedContent + '\n\n*Error: ' + (event.error || event.content) + '*' }
-                    : msg
-                ))
+                const rawError = event.error || event.content || 'Unknown error'
+                console.error('Stream error:', rawError)
+                
+                const friendlyError = parseErrorMessage(rawError)
+                
+                // Create a NEW error message - never modify existing messages
+                const errorMessage: Message = {
+                  id: Date.now().toString() + '-error',
+                  role: 'error',
+                  content: friendlyError,
+                  error_details: rawError
+                }
+                
+                setMessages(prev => [...prev, errorMessage])
               }
             } catch (e) {
               console.error('Error parsing SSE data:', e)
@@ -686,10 +775,14 @@ function App() {
         ))
       } else {
         // Add error message for other errors
+        const errorText = error instanceof Error ? error.message : String(error)
+        const friendlyError = parseErrorMessage(errorText)
+        
         const errorMessage: Message = {
           id: (Date.now() + 2).toString(),
-          role: 'assistant',
-          content: `*Error: Failed to send message. ${error instanceof Error ? error.message : 'Unknown error'}*`
+          role: 'error',
+          content: friendlyError,
+          error_details: errorText
         }
         setMessages(prev => [...prev, errorMessage])
       }
@@ -816,6 +909,10 @@ function App() {
                               {message.content}
                             </ReactMarkdown>
                           </div>
+                        </div>
+                      ) : message.role === 'error' ? (
+                        <div className="w-full">
+                          <ErrorDisplay message={message.content} details={message.error_details} />
                         </div>
                       ) : (
                         <div className="w-full">
